@@ -104,7 +104,7 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 	default:
 		if b&0b11110000 != 0b10000000 {
 			rc.offset--
-			rc.err = fmt.Errorf("encountered msgpack byte %c while expecting a map", b)
+			rc.err = fmt.Errorf("encountered msgpack byte %d while expecting a map at offset %d", b, rc.offset)
 			return
 		}
 		elements = int(b & 0b00001111)
@@ -251,7 +251,7 @@ func (rc *resolveCall) resolveValue() any {
 		return rc.readExtension(rc.data[rc.offset-l-1], rc.data[rc.offset-l:rc.offset])
 	default:
 		rc.offset--
-		rc.err = fmt.Errorf("unexpected msgpack byte while decoding: %c", b)
+		rc.err = fmt.Errorf("unexpected msgpack byte %d while decoding at offset %d", b, rc.offset)
 		return rc.err
 	}
 }
@@ -331,7 +331,7 @@ func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
 			sec := binary.BigEndian.Uint64(data[4:])
 			return time.Unix(int64(sec), int64(nsec))
 		}
-		rc.err = fmt.Errorf("failed to timestamp of %d bytes", len(data))
+		rc.err = fmt.Errorf("failed to decode timestamp of %d bytes", len(data))
 		return rc.err
 
 	case int8(math.MinInt8): // Interned string
