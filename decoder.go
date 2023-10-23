@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alecthomas/unsafeslice"
+	"github.com/hexon/fastmsgpack/internal"
 )
 
 var thisLibraryRequires64Bits int = math.MaxInt64
@@ -335,7 +336,7 @@ func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
 		return rc.err
 
 	case int8(math.MinInt8): // Interned string
-		n, ok := decodeBytesToUint(data)
+		n, ok := internal.DecodeBytesToUint(data)
 		if !ok {
 			rc.err = errors.New("failed to decode index number of interned string")
 			return rc.err
@@ -348,21 +349,6 @@ func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
 
 	default:
 		return Extension{Type: int8(extType), Data: data}
-	}
-}
-
-func decodeBytesToUint(data []byte) (uint, bool) {
-	switch len(data) {
-	case 1:
-		return uint(data[0]), true
-	case 2:
-		return uint(binary.BigEndian.Uint16(data)), true
-	case 4:
-		return uint(binary.BigEndian.Uint32(data)), true
-	case 8:
-		return uint(binary.BigEndian.Uint64(data)), true
-	default:
-		return 0, false
 	}
 }
 
