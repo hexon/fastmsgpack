@@ -25,9 +25,7 @@ func Decode(data []byte, dict []string) (_ any, retErr error) {
 		}
 	}()
 	rc := resolveCall{
-		Resolver: Resolver{
-			dict: dict,
-		},
+		dict: dict,
 		data: data,
 	}
 	return rc.resolveValue(), rc.err
@@ -77,16 +75,16 @@ func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
 		}
 	}()
 	rc := resolveCall{
-		Resolver: *r,
-		data:     data,
-		result:   make([]any, r.numFields),
+		dict:   r.dict,
+		data:   data,
+		result: make([]any, r.numFields),
 	}
-	rc.recurseMap(rc.interests, false)
+	rc.recurseMap(r.interests, false)
 	return rc.result, rc.err
 }
 
 type resolveCall struct {
-	Resolver
+	dict   []string
 	data   []byte
 	result []any
 	err    error
