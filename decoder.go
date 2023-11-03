@@ -36,34 +36,68 @@ func Decode(data []byte, dict []string) (_ any, retErr error) {
 // The dictionary is optional and can be nil.
 func NewResolver(fields []string, dict []string) (*Resolver, error) {
 	interests := map[string]any{}
+	r := &Resolver{interests, dict, len(fields)}
 	for n, f := range fields {
-		sp := strings.Split(f, ".")
-		dst := interests
-		for len(sp) > 1 {
-			v := dst[sp[0]]
-			m, ok := v.(map[string]any)
-			if !ok {
-				if v != nil {
-					return nil, errors.New("NewResolver: conflicting fields requested")
-				}
-				m = map[string]any{}
-				dst[sp[0]] = m
-			}
-			dst = m
-			sp = sp[1:]
+		if err := r.addField(f, n); err != nil {
+			return nil, err
 		}
-		if dst[sp[0]] != nil {
-			return nil, errors.New("NewResolver: conflicting fields requested: " + f)
-		}
-		dst[sp[0]] = n
 	}
-	return &Resolver{interests, dict, len(fields)}, nil
+	return r, nil
+}
+
+type subresolver struct {
+	interests   map[string]any
+	destination int
+	numFields   int
 }
 
 type Resolver struct {
 	interests map[string]any
 	dict      []string
 	numFields int
+}
+
+// AddArrayResolver allows resolving inside array fields. For example like this pseudocode: `r.AddArrayResolve("person.addresses", NewResolver(["street"]))`.
+// It returns the offset in the return value from Resolve(), which will be of type [][]any.
+// AddArrayResolver can not be called concurrently with itself or Resolve.
+// The dict that was given to the subresolver is not used.
+//
+//	r, err := NewResolver([]string{"person.properties.age"}, nil)
+//	sub, err := NewResolver([]string{"street", "number"}, nil)
+//	addrOffset, err := r.AddArrayResolver("person.addresses", sub)
+//	found, err := r.Resolve(msgpackData)
+//	age := found[0] // e.g. 5
+//	addresses := found[addrOffset] // e.g. [][]any{[]any{"Main Street", 1}, []any{"Second Street", 2}}
+func (r *Resolver) AddArrayResolver(field string, sub *Resolver) (int, error) {
+	dst := r.numFields
+	if err := r.addField(field, subresolver{sub.interests, dst, sub.numFields}); err != nil {
+		return -1, err
+	}
+	r.numFields++
+	return dst, nil
+}
+
+func (r *Resolver) addField(field string, what any) error {
+	sp := strings.Split(field, ".")
+	dst := r.interests
+	for len(sp) > 1 {
+		v := dst[sp[0]]
+		m, ok := v.(map[string]any)
+		if !ok {
+			if v != nil {
+				return errors.New("NewResolver: conflicting fields requested")
+			}
+			m = map[string]any{}
+			dst[sp[0]] = m
+		}
+		dst = m
+		sp = sp[1:]
+	}
+	if dst[sp[0]] != nil {
+		return errors.New("NewResolver: conflicting fields requested: " + field)
+	}
+	dst[sp[0]] = what
+	return nil
 }
 
 // Resolve scans through the given data and returns an array with the fields you've requested from this Resolver.
@@ -131,6 +165,9 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 		case map[string]any:
 			sought--
 			rc.recurseMap(x, mustSkip || sought > 0)
+		case subresolver:
+			sought--
+			rc.recurseArray(x, mustSkip || sought > 0)
 		default:
 			rc.skipValue()
 		}
@@ -147,6 +184,37 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 			return
 		}
 	}
+}
+
+func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) {
+	b := rc.data[rc.offset]
+	rc.offset++
+	var elements int
+	switch b {
+	case 0xdc:
+		elements = int(rc.readUint16())
+	case 0xdd:
+		elements = int(rc.readUint32())
+	default:
+		if b&0b11110000 != 0b10010000 {
+			rc.offset--
+			rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", b, rc.offset)
+			return
+		}
+		elements = int(b & 0b00001111)
+	}
+	parentResults := rc.result
+	results := make([][]any, elements)
+	for i := 0; elements > i; i++ {
+		rc.result = make([]any, sub.numFields)
+		rc.recurseMap(sub.interests, mustSkip || i < elements-1)
+		if rc.err != nil {
+			return
+		}
+		results[i] = rc.result
+	}
+	rc.result = parentResults
+	rc.result[sub.destination] = results
 }
 
 func (rc *resolveCall) resolveValue() any {
