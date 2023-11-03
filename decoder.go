@@ -137,7 +137,8 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 	default:
 		if b&0b11110000 != 0b10000000 {
 			rc.offset--
-			rc.err = fmt.Errorf("encountered msgpack byte %d while expecting a map at offset %d", b, rc.offset)
+			rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", b, rc.offset)
+			panic(fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", b, rc.offset))
 			return
 		}
 		elements = int(b & 0b00001111)
@@ -318,7 +319,7 @@ func (rc *resolveCall) resolveValue() any {
 		return rc.readExtension(rc.data[rc.offset-l-1], rc.data[rc.offset-l:rc.offset])
 	default:
 		rc.offset--
-		rc.err = fmt.Errorf("unexpected msgpack byte %d while decoding at offset %d", b, rc.offset)
+		rc.err = fmt.Errorf("unexpected msgpack byte %02x while decoding at offset %d", b, rc.offset)
 		return rc.err
 	}
 }
