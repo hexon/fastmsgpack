@@ -186,11 +186,11 @@ func (c *converter) convertValue() error {
 		case 0xd0:
 			buf = strconv.AppendInt(buf, int64(int8(c.readUint8())), 10)
 		case 0xd1:
-			buf = strconv.AppendInt(buf, int64(int8(c.readUint16())), 10)
+			buf = strconv.AppendInt(buf, int64(int16(c.readUint16())), 10)
 		case 0xd2:
-			buf = strconv.AppendInt(buf, int64(int8(c.readUint32())), 10)
+			buf = strconv.AppendInt(buf, int64(int32(c.readUint32())), 10)
 		case 0xd3:
-			buf = strconv.AppendInt(buf, int64(int8(c.readUint64())), 10)
+			buf = strconv.AppendInt(buf, int64(c.readUint64()), 10)
 		case 0xca:
 			buf = strconv.AppendFloat(buf, float64(math.Float32frombits(c.readUint32())), 'f', -1, 32)
 		case 0xcb:
