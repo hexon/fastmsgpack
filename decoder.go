@@ -476,3 +476,35 @@ func (rc *resolveCall) skipValues(n int) {
 		rc.skipValue()
 	}
 }
+
+// Size returns the number of bytes the first entry in the given msgpack data is.
+func Size(data []byte) (int, error) {
+	rc := resolveCall{
+		data: data,
+	}
+	rc.skipValue()
+	return rc.offset, rc.err
+}
+
+// SplitArray splits a msgpack array into the msgpack chunks of its components.
+// The returned slices point into the given data.
+func SplitArray(data []byte) ([][]byte, error) {
+	elements, consume, ok := internal.DecodeArrayLen(data)
+	if !ok {
+		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", data[0], 0)
+	}
+	ret := make([][]byte, elements)
+	rc := resolveCall{
+		data:   data,
+		offset: consume,
+	}
+	for i := 0; elements > i; i++ {
+		start := rc.offset
+		rc.skipValue()
+		if rc.err != nil {
+			return nil, rc.err
+		}
+		ret[i] = data[start:rc.offset]
+	}
+	return ret, nil
+}
