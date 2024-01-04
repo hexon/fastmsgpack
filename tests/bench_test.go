@@ -12,37 +12,55 @@ import (
 )
 
 func benchmarkEncodeDecode(b *testing.B, src, dst interface{}) {
-	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf)
+	b.Run("fastmsgpack", func(b *testing.B) {
+		var buf []byte
+		enc := fastmsgpack.EncodeOptions{}
 
-	b.ResetTimer()
+		b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		buf.Reset()
-		if err := enc.Encode(src); err != nil {
-			b.Fatal(err)
+		var err error
+		for i := 0; i < b.N; i++ {
+			buf, err = enc.Encode(buf[:0], src)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if _, err := fastmsgpack.Decode(buf, nil); err != nil {
+				b.Fatal(err)
+			}
 		}
-		if _, err := fastmsgpack.Decode(buf.Bytes(), nil); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
+	})
+	b.Run("vmihailenco/msgpack/v5", func(b *testing.B) {
+		var buf bytes.Buffer
+		enc := msgpack.NewEncoder(&buf)
 
-func benchmarkJSONEncodeDecode(b *testing.B, src, dst interface{}) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	dec := json.NewDecoder(&buf)
+		b.ResetTimer()
 
-	b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			buf.Reset()
+			if err := enc.Encode(src); err != nil {
+				b.Fatal(err)
+			}
+			if _, err := fastmsgpack.Decode(buf.Bytes(), nil); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("json", func(b *testing.B) {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		dec := json.NewDecoder(&buf)
 
-	for i := 0; i < b.N; i++ {
-		if err := enc.Encode(src); err != nil {
-			b.Fatal(err)
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			if err := enc.Encode(src); err != nil {
+				b.Fatal(err)
+			}
+			if err := dec.Decode(dst); err != nil {
+				b.Fatal(err)
+			}
 		}
-		if err := dec.Decode(dst); err != nil {
-			b.Fatal(err)
-		}
-	}
+	})
 }
 
 func BenchmarkBool(b *testing.B) {
@@ -105,11 +123,6 @@ func BenchmarkTime(b *testing.B) {
 	benchmarkEncodeDecode(b, time.Now(), &dst)
 }
 
-func BenchmarkDuration(b *testing.B) {
-	var dst time.Duration
-	benchmarkEncodeDecode(b, time.Hour, &dst)
-}
-
 func BenchmarkByteSlice(b *testing.B) {
 	src := make([]byte, 1024)
 	var dst []byte
@@ -146,7 +159,7 @@ func BenchmarkMapStringStringPtr(b *testing.B) {
 	benchmarkEncodeDecode(b, src, &dst)
 }
 
-func BenchmarkMapStringInterfaceMsgpack(b *testing.B) {
+func BenchmarkMapStringInterface(b *testing.B) {
 	src := map[string]interface{}{
 		"hello": "world",
 		"foo":   "bar",
@@ -155,17 +168,6 @@ func BenchmarkMapStringInterfaceMsgpack(b *testing.B) {
 	}
 	var dst map[string]interface{}
 	benchmarkEncodeDecode(b, src, &dst)
-}
-
-func BenchmarkMapStringInterfaceJSON(b *testing.B) {
-	src := map[string]interface{}{
-		"hello": "world",
-		"foo":   "bar",
-		"one":   1111111,
-		"two":   2222222,
-	}
-	var dst map[string]interface{}
-	benchmarkJSONEncodeDecode(b, src, &dst)
 }
 
 func BenchmarkStringSlice(b *testing.B) {

@@ -174,22 +174,21 @@ func TestUint64(t *testing.T) {
 		{math.MaxInt64, "cf7fffffffffffffff"},
 	}
 
-	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf)
-	enc.UseCompactInts(true)
+	var buf []byte
+	enc := fastmsgpack.EncodeOptions{CompactInts: true}
 
 	for _, test := range tests {
-		buf.Reset()
-		err := enc.Encode(test.in)
+		var err error
+		buf, err = enc.Encode(buf[:0], test.in)
 		if err != nil {
 			t.Fatal(err)
 		}
-		s := hex.EncodeToString(buf.Bytes())
+		s := hex.EncodeToString(buf)
 		if s != test.wanted {
 			t.Fatalf("%.32s != %.32s", s, test.wanted)
 		}
 
-		out, err := fastmsgpack.Decode(buf.Bytes(), nil)
+		out, err := fastmsgpack.Decode(buf, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -8,11 +8,11 @@ Fastmsgpack is a Golang msgpack decoder. It is fast, but lacks features you migh
 
 * It is very fast to query a list of fields from a nested msgpack structure.
 * It is zero copy for strings and []byte.
-* No reflection usage.
+* No reflection usage when decoding.
 
 ### Cons:
 
-* It can't encode.
+* It can only encode Go builtin types.
 * The return value might contain pointers to the original data, so you can't modify the input data until you're done with the return value.
 * It uses unsafe (to cast []byte to string without copying).
 * It can't deserialize into your structs.
