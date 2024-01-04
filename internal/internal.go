@@ -44,3 +44,31 @@ func AppendArrayLen(dst []byte, l int) ([]byte, error) {
 		return nil, fmt.Errorf("fastmsgpack.Encode: map too long to encode (len %d)", l)
 	}
 }
+
+func DecodeMapLen(data []byte) (int, int, bool) {
+	switch data[0] {
+	case 0xde:
+		return int(binary.BigEndian.Uint16(data[1:3])), 3, true
+	case 0xdf:
+		return int(binary.BigEndian.Uint32(data[1:5])), 5, true
+	default:
+		if data[0]&0b11110000 != 0b10000000 {
+			return 0, 0, false
+		}
+		return int(data[0] & 0b00001111), 1, true
+	}
+}
+
+func DecodeArrayLen(data []byte) (int, int, bool) {
+	switch data[0] {
+	case 0xdc:
+		return int(binary.BigEndian.Uint16(data[1:3])), 3, true
+	case 0xdd:
+		return int(binary.BigEndian.Uint32(data[1:5])), 5, true
+	default:
+		if data[0]&0b11110000 != 0b10010000 {
+			return 0, 0, false
+		}
+		return int(data[0] & 0b00001111), 1, true
+	}
+}

@@ -126,23 +126,13 @@ type resolveCall struct {
 }
 
 func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
-	b := rc.data[rc.offset]
-	rc.offset++
-	var elements int
-	switch b {
-	case 0xde:
-		elements = int(rc.readUint16())
-	case 0xdf:
-		elements = int(rc.readUint32())
-	default:
-		if b&0b11110000 != 0b10000000 {
-			rc.offset--
-			rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", b, rc.offset)
-			panic(fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", b, rc.offset))
-			return
-		}
-		elements = int(b & 0b00001111)
+	elements, consume, ok := internal.DecodeMapLen(rc.data[rc.offset:])
+	if !ok {
+		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", rc.data[rc.offset], rc.offset)
+		return
 	}
+	rc.offset += consume
+
 	sought := len(interests)
 	for i := 0; elements > i; i++ {
 		kv := rc.resolveValue()
@@ -188,22 +178,12 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 }
 
 func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) {
-	b := rc.data[rc.offset]
-	rc.offset++
-	var elements int
-	switch b {
-	case 0xdc:
-		elements = int(rc.readUint16())
-	case 0xdd:
-		elements = int(rc.readUint32())
-	default:
-		if b&0b11110000 != 0b10010000 {
-			rc.offset--
-			rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", b, rc.offset)
-			return
-		}
-		elements = int(b & 0b00001111)
+	elements, consume, ok := internal.DecodeArrayLen(rc.data[rc.offset:])
+	if !ok {
+		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", rc.data[rc.offset], rc.offset)
+		return
 	}
+	rc.offset += consume
 	parentResults := rc.result
 	results := make([][]any, elements)
 	for i := 0; elements > i; i++ {
