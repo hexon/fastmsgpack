@@ -37,6 +37,7 @@ func Merge(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string, m M
 }
 
 func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, ok := internal.DecodeMapLen(data)
 	if !ok {
 		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting a map", data[0])
@@ -123,6 +124,7 @@ outer:
 }
 
 func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, ok := internal.DecodeArrayLen(data)
 	if !ok {
 		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting an array", data[0])
@@ -183,6 +185,7 @@ func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict [
 }
 
 func (m Each) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, isMap := internal.DecodeMapLen(data)
 	if !isMap {
 		var ok bool

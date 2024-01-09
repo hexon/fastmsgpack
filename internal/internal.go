@@ -45,6 +45,34 @@ func AppendArrayLen(dst []byte, l int) ([]byte, error) {
 	}
 }
 
+// DecodeLengthPrefixExtension returns the number of bytes to be skipped past to get to the real entry.
+func DecodeLengthPrefixExtension(data []byte) int {
+	switch data[0] {
+	case 0xd4, 0xd5, 0xd6, 0xd7, 0xd8:
+		if data[1] != 17 {
+			return 0
+		}
+		return 2
+	case 0xc7:
+		if data[2] != 17 {
+			return 0
+		}
+		return 3
+	case 0xc8:
+		if data[3] != 17 {
+			return 0
+		}
+		return 4
+	case 0xc9:
+		if data[5] != 17 {
+			return 0
+		}
+		return 6
+	default:
+		return 0
+	}
+}
+
 func DecodeMapLen(data []byte) (int, int, bool) {
 	switch data[0] {
 	case 0xde:

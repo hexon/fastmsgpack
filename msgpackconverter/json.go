@@ -343,6 +343,10 @@ func (c *converter) convertExtension(extType uint8, data []byte) error {
 		_, err := c.w.Write(c.encodedDict[n])
 		return err
 
+	case 17: // Length-prefixed entry
+		c.offset -= len(data)
+		return c.convertValue()
+
 	default:
 		return fmt.Errorf("don't know how to encode Extension type %d", int8(extType))
 	}

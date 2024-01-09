@@ -126,6 +126,11 @@ type resolveCall struct {
 }
 
 func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
+	fastSkipStart := -1
+	if l := internal.DecodeLengthPrefixExtension(rc.data[rc.offset:]); l > 0 {
+		fastSkipStart = rc.offset
+		rc.offset += l
+	}
 	elements, consume, ok := internal.DecodeMapLen(rc.data[rc.offset:])
 	if !ok {
 		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", rc.data[rc.offset], rc.offset)
@@ -167,7 +172,14 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 		}
 		if sought == 0 {
 			if mustSkip {
-				for i++; elements > i; i++ {
+				i++
+				if fastSkipStart != -1 && elements > i {
+					// This map was wrapped with a length-encoding. Jump back to the beginning, so we skip over the entire object at once.
+					rc.offset = fastSkipStart
+					rc.skipValue()
+					return
+				}
+				for ; elements > i; i++ {
 					rc.skipValue()
 					rc.skipValue()
 				}
@@ -178,6 +190,7 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 }
 
 func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) {
+	rc.offset += internal.DecodeLengthPrefixExtension(rc.data[rc.offset:])
 	elements, consume, ok := internal.DecodeArrayLen(rc.data[rc.offset:])
 	if !ok {
 		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", rc.data[rc.offset], rc.offset)
@@ -394,6 +407,10 @@ func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
 		}
 		return rc.dict[n]
 
+	case 17: // Length-prefixed entry
+		rc.offset -= len(data)
+		return rc.resolveValue()
+
 	default:
 		return Extension{Type: int8(extType), Data: data}
 	}
@@ -489,6 +506,7 @@ func Size(data []byte) (int, error) {
 // SplitArray splits a msgpack array into the msgpack chunks of its components.
 // The returned slices point into the given data.
 func SplitArray(data []byte) ([][]byte, error) {
+	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, ok := internal.DecodeArrayLen(data)
 	if !ok {
 		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", data[0], 0)
