@@ -18,7 +18,6 @@ Fastmsgpack is a Golang msgpack decoder. It is fast, but lacks features you migh
 * It can't deserialize into your structs.
 * It only supports strings as map keys.
 * It decodes all ints as a Go `int`, including 64 bit ones, so it doesn't work on 32-bit platforms.
-* Using the Resolve API, you can't query fields inside of arrays (yet).
 
 ## Supported extensions:
 
