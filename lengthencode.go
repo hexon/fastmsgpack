@@ -3,52 +3,66 @@ package fastmsgpack
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/hexon/fastmsgpack/internal"
 )
 
+var lengthEncoderPool = sync.Pool{New: func() any { return make([]lengthEncoderAction, 128) }}
+
 // LengthEncode injects a length-encoding extension before every map and array to make skipping over it faster.
+// The result is appended to dst and returned. dst can be nil.
 func LengthEncode(dst, data []byte) ([]byte, error) {
 	le := lengthEncoder{
-		data: data,
+		data:         data,
+		currentChunk: lengthEncoderPool.Get().([]lengthEncoderAction)[:0],
 	}
 	l, err := le.parseValue()
+	le.listOfChunks = append(le.listOfChunks, le.currentChunk)
 	if err != nil {
+		for _, chunks := range le.listOfChunks {
+			lengthEncoderPool.Put(chunks)
+		}
 		return nil, err
 	}
 	if cap(dst) < l {
-		dst = make([]byte, 0, l)
+		d := make([]byte, 0, len(dst)+l)
+		copy(d, dst)
+		dst = d
 	}
 	offset := 0
-	for _, c := range le.chunks {
-		switch c := c.(type) {
-		case lengthEncoderCopy:
-			dst = append(dst, data[offset:offset+int(c)]...)
-			offset += int(c)
-		case lengthEncoderSkip:
-			offset += int(c)
-		case lengthEncoderHeader:
-			dst = appendLengthHeader(dst, *c)
+	for _, chunks := range le.listOfChunks {
+		for _, c := range chunks {
+			switch c := c.(type) {
+			case lengthEncoderCopy:
+				dst = append(dst, data[offset:offset+int(c)]...)
+				offset += int(c)
+			case lengthEncoderSkip:
+				offset += int(c)
+			case lengthEncoderHeader:
+				dst = appendLengthHeader(dst, *c)
+			}
 		}
+		lengthEncoderPool.Put(chunks)
 	}
 	return dst, nil
 }
 
 type lengthEncoder struct {
-	data   []byte
-	chunks []lengthEncoderAction
-	offset int
+	data         []byte
+	listOfChunks [][]lengthEncoderAction
+	currentChunk []lengthEncoderAction
+	offset       int
 }
 
 type lengthEncoderAction interface{}
-
 type lengthEncoderCopy int
 type lengthEncoderSkip int
 type lengthEncoderHeader *int
 
 func (le *lengthEncoder) parseValue() (int, error) {
 	if l := internal.DecodeLengthPrefixExtension(le.data[le.offset:]); l > 0 {
-		le.chunks = append(le.chunks, lengthEncoderSkip(l))
+		le.appendAction(lengthEncoderSkip(l))
 		le.offset += l
 	}
 	elements, consume, isMap := internal.DecodeMapLen(le.data[le.offset:])
@@ -68,7 +82,8 @@ func (le *lengthEncoder) parseValue() (int, error) {
 	le.offset += consume
 	h := lengthEncoderHeader(new(int))
 	*h = consume
-	le.chunks = append(le.chunks, h, lengthEncoderCopy(consume))
+	le.appendAction(h)
+	le.appendAction(lengthEncoderCopy(consume))
 	if isMap {
 		elements *= 2
 	}
@@ -87,21 +102,29 @@ func (le *lengthEncoder) parseValue() (int, error) {
 }
 
 func (le *lengthEncoder) appendCopy(sz int) {
-	if len(le.chunks) > 0 {
-		if l, ok := le.chunks[len(le.chunks)-1].(lengthEncoderCopy); ok {
-			le.chunks[len(le.chunks)-1] = l + lengthEncoderCopy(sz)
+	if len(le.currentChunk) > 0 {
+		if l, ok := le.currentChunk[len(le.currentChunk)-1].(lengthEncoderCopy); ok {
+			le.currentChunk[len(le.currentChunk)-1] = l + lengthEncoderCopy(sz)
 			return
 		}
 	}
-	le.chunks = append(le.chunks, lengthEncoderCopy(sz))
+	le.appendAction(lengthEncoderCopy(sz))
+}
+
+func (le *lengthEncoder) appendAction(a lengthEncoderAction) {
+	if len(le.currentChunk) == cap(le.currentChunk) {
+		le.listOfChunks = append(le.listOfChunks, le.currentChunk)
+		le.currentChunk = lengthEncoderPool.Get().([]lengthEncoderAction)[:0]
+	}
+	le.currentChunk = append(le.currentChunk, a)
 }
 
 func sizeOfLengthHeader(wrapped int) int {
-	switch wrapped {
-	case 1, 2, 4, 8, 16:
-		return 2
-	}
 	if wrapped <= math.MaxUint8 {
+		switch wrapped {
+		case 1, 2, 4, 8, 16:
+			return 2
+		}
 		return 3
 	} else if wrapped <= math.MaxUint16 {
 		return 4
@@ -110,19 +133,19 @@ func sizeOfLengthHeader(wrapped int) int {
 }
 
 func appendLengthHeader(dst []byte, wrapped int) []byte {
-	switch wrapped {
-	case 1:
-		return append(dst, 0xd4, 17)
-	case 2:
-		return append(dst, 0xd5, 17)
-	case 4:
-		return append(dst, 0xd6, 17)
-	case 8:
-		return append(dst, 0xd7, 17)
-	case 16:
-		return append(dst, 0xd8, 17)
-	}
 	if wrapped <= math.MaxUint8 {
+		switch wrapped {
+		case 1:
+			return append(dst, 0xd4, 17)
+		case 2:
+			return append(dst, 0xd5, 17)
+		case 4:
+			return append(dst, 0xd6, 17)
+		case 8:
+			return append(dst, 0xd7, 17)
+		case 16:
+			return append(dst, 0xd8, 17)
+		}
 		return append(dst, 0xc7, byte(wrapped), 17)
 	} else if wrapped <= math.MaxUint16 {
 		return append(dst, 0xc8, byte(wrapped>>8), byte(wrapped), 17)
