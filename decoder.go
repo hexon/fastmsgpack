@@ -118,11 +118,12 @@ func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
 }
 
 type resolveCall struct {
-	dict   []string
-	data   []byte
-	result []any
-	err    error
-	offset int
+	dict     []string
+	data     []byte
+	result   []any
+	selected []byte
+	err      error
+	offset   int
 }
 
 func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
