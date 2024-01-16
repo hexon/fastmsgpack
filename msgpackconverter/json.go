@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/hexon/fastmsgpack"
 	"github.com/hexon/fastmsgpack/internal"
 )
 
@@ -119,9 +120,9 @@ type JSONConverter struct {
 	encodedDict [][]byte
 }
 
-func NewJSONConverter(dict []string) JSONConverter {
-	encodedDict := make([][]byte, len(dict))
-	for i, s := range dict {
+func NewJSONConverter(dict *fastmsgpack.Dict) JSONConverter {
+	encodedDict := make([][]byte, len(dict.Strings))
+	for i, s := range dict.Strings {
 		encodedDict[i] = encodeJSONString(nil, []byte(s))
 	}
 	return JSONConverter{encodedDict}

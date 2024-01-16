@@ -9,7 +9,7 @@ import (
 )
 
 type Merger interface {
-	descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error)
+	descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error)
 }
 
 type StringMap struct {
@@ -32,11 +32,11 @@ type Value struct {
 
 type EncodedValue []byte
 
-func Merge(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string, m Merger) ([]byte, error) {
+func Merge(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict, m Merger) ([]byte, error) {
 	return m.descend(dst, data, o, readDict)
 }
 
-func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
 	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, ok := internal.DecodeMapLen(data)
 	if !ok {
@@ -123,7 +123,7 @@ outer:
 	return dst, nil
 }
 
-func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
 	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, ok := internal.DecodeArrayLen(data)
 	if !ok {
@@ -184,7 +184,7 @@ func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict [
 	return dst, nil
 }
 
-func (m Each) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+func (m Each) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
 	data = data[internal.DecodeLengthPrefixExtension(data):]
 	elements, consume, isMap := internal.DecodeMapLen(data)
 	if !isMap {
@@ -232,14 +232,14 @@ func (m Each) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []
 	return dst, nil
 }
 
-func (m Value) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+func (m Value) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
 	return o.Encode(dst, m.Value)
 }
 
-func (m EncodedValue) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+func (m EncodedValue) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
 	return append(dst, m...), nil
 }
 
-func (DeleteEntry) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict []string) ([]byte, error) {
+func (DeleteEntry) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
 	return nil, errors.New("fastmsgpack/mpmerge: DeleteEntry must be used as a child of a map or array")
 }

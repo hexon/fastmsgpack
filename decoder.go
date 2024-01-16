@@ -18,7 +18,8 @@ var thisLibraryRequires64Bits int = math.MaxInt64
 
 // Decode the given data (with the optional given dictionary).
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
-func Decode(data []byte, dict []string) (_ any, retErr error) {
+// The dictionary is optional and can be nil.
+func Decode(data []byte, dict *Dict) (_ any, retErr error) {
 	defer func() {
 		if r := recover(); r != nil {
 			retErr = fmt.Errorf("decoder panicked, likely bad input: %v", r)
@@ -34,7 +35,7 @@ func Decode(data []byte, dict []string) (_ any, retErr error) {
 // NewResolver prepares a new resolver. It can be reused for multiple Resolve calls.
 // You can't query the same field twice. You can't even query a child of something else you request (e.g. both "person.properties" and "person.properties.age"). This is the only reason NewResolver might return an error.
 // The dictionary is optional and can be nil.
-func NewResolver(fields []string, dict []string) (*Resolver, error) {
+func NewResolver(fields []string, dict *Dict) (*Resolver, error) {
 	interests := map[string]any{}
 	r := &Resolver{interests, dict, len(fields)}
 	for n, f := range fields {
@@ -53,7 +54,7 @@ type subresolver struct {
 
 type Resolver struct {
 	interests map[string]any
-	dict      []string
+	dict      *Dict
 	numFields int
 }
 
@@ -118,7 +119,7 @@ func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
 }
 
 type resolveCall struct {
-	dict     []string
+	dict     *Dict
 	data     []byte
 	result   []any
 	selected []byte
@@ -402,11 +403,12 @@ func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
 			rc.err = errors.New("failed to decode index number of interned string")
 			return rc.err
 		}
-		if n >= uint(len(rc.dict)) {
-			rc.err = fmt.Errorf("interned string %d is out of bounds for the dict (%d entries)", n, len(rc.dict))
-			return rc.err
+		v, err := rc.dict.lookup(n)
+		if err != nil {
+			rc.err = err
+			return err
 		}
-		return rc.dict[n]
+		return v
 
 	case 17: // Length-prefixed entry
 		rc.offset -= len(data)
