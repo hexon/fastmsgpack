@@ -116,6 +116,11 @@ outer:
 			}
 		case EncodedValue:
 			dst = append(dst, sm...)
+		case StringMap:
+			dst, err = sm.descend(dst, []byte{0x80}, o, readDict)
+			if err != nil {
+				return nil, err
+			}
 		default:
 			return nil, fmt.Errorf("fastmsgpack/mpmerge: tried to apply %T to non-existent map key %q", sm, k)
 		}
@@ -153,6 +158,11 @@ func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *
 				}
 			case EncodedValue:
 				dst = append(dst, sm...)
+			case StringMap:
+				dst, err = sm.descend(dst, []byte{0x80}, o, readDict)
+				if err != nil {
+					return nil, err
+				}
 			default:
 				return nil, fmt.Errorf("fastmsgpack/mpmerge: tried to apply %T to out of bounds array entry %d", sm, i)
 			}
