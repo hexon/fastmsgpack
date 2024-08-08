@@ -166,6 +166,7 @@ func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *
 			default:
 				return nil, fmt.Errorf("fastmsgpack/mpmerge: tried to apply %T to out of bounds array entry %d", sm, i)
 			}
+			continue
 		}
 		sz, err := fastmsgpack.Size(data)
 		if err != nil {
