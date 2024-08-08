@@ -162,7 +162,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 	if typeRestricted && retType != "time" {
 		fmt.Fprintf(w, "	switch data[0] {\n")
 		for _, t := range types {
-			if t.ByteEnd != 0 || (t.DataType != retType && !(strings.HasPrefix(t.DataType, "float") && strings.HasPrefix(retType, "float"))) {
+			if t.ByteEnd != 0 || (t.DataType != retType && !(strings.HasPrefix(t.DataType, "float") && strings.HasPrefix(retType, "float")) && !(retType == "string" && t.DataType == "[]byte")) {
 				continue
 			}
 			fmt.Fprintf(w, "	case 0x%02x:\n", t.Byte)
@@ -253,6 +253,10 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		}
 		if retType == "float32" && t.DataType == "float64" {
 			fmt.Fprintf(w, "		return float32(%s), %s, nil\n", val, lencalc)
+			break
+		}
+		if retType == "string" && t.DataType == "[]byte" {
+			fmt.Fprintf(w, "		return internal.UnsafeStringCast(%s), %s, nil\n", val, lencalc)
 			break
 		}
 		switch retType {

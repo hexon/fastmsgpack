@@ -240,6 +240,33 @@ func decodeString(data []byte, dict *Dict) (string, int, error) {
 		return internal.UnsafeStringCast(data[1:s]), s, nil
 	}
 	switch data[0] {
+	case 0xc4:
+		if len(data) < 2 {
+			return "", 0, internal.ErrShortInput
+		}
+		s := int(data[1]) + 2
+		if len(data) < s {
+			return "", 0, internal.ErrShortInput
+		}
+		return internal.UnsafeStringCast(data[2:s]), s, nil
+	case 0xc5:
+		if len(data) < 3 {
+			return "", 0, internal.ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return "", 0, internal.ErrShortInput
+		}
+		return internal.UnsafeStringCast(data[3:s]), s, nil
+	case 0xc6:
+		if len(data) < 5 {
+			return "", 0, internal.ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return "", 0, internal.ErrShortInput
+		}
+		return internal.UnsafeStringCast(data[5:s]), s, nil
 	case 0xd9:
 		if len(data) < 2 {
 			return "", 0, internal.ErrShortInput
