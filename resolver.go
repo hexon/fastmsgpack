@@ -400,7 +400,7 @@ func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
 			rc.err = errors.New("failed to decode index number of interned string")
 			return rc.err
 		}
-		v, err := rc.dict.lookup(n)
+		v, err := rc.dict.lookupAny(n)
 		if err != nil {
 			rc.err = err
 			return err
