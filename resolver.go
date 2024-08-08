@@ -10,8 +10,7 @@ import (
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
 // The dictionary is optional and can be nil.
 func Decode(data []byte, dict *Dict) (any, error) {
-	d := NewDecoder(data, dict)
-	v, _, err := d.decodeValue(data)
+	v, _, err := decodeValue(data, dict)
 	return v, err
 }
 
