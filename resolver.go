@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alecthomas/unsafeslice"
 	"github.com/hexon/fastmsgpack/internal"
 )
 
@@ -149,7 +148,7 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
 		case string:
 			k = kv
 		case []byte:
-			k = unsafeslice.StringFromByteSlice(kv)
+			k = internal.UnsafeStringCast(kv)
 		default:
 			rc.err = errors.New("fastmsgpack doesn't support non-string keys in maps")
 			return
@@ -222,7 +221,7 @@ func (rc *resolveCall) resolveValue() any {
 	case 0b10100000:
 		l := int(b & 0b00011111)
 		rc.offset += l
-		return unsafeslice.StringFromByteSlice(rc.data[rc.offset-l : rc.offset])
+		return internal.UnsafeStringCast(rc.data[rc.offset-l : rc.offset])
 	case 0b10000000:
 		if b&0b11110000 == 0b10010000 {
 			return rc.resolveArray(int(b & 0b00001111))
@@ -259,13 +258,13 @@ func (rc *resolveCall) resolveValue() any {
 		return math.Float64frombits(rc.readUint64())
 	case 0xd9:
 		l := int(rc.readUint8())
-		return unsafeslice.StringFromByteSlice(rc.readBytes(l))
+		return internal.UnsafeStringCast(rc.readBytes(l))
 	case 0xda:
 		l := int(rc.readUint16())
-		return unsafeslice.StringFromByteSlice(rc.readBytes(l))
+		return internal.UnsafeStringCast(rc.readBytes(l))
 	case 0xdb:
 		l := int(rc.readUint32())
-		return unsafeslice.StringFromByteSlice(rc.readBytes(l))
+		return internal.UnsafeStringCast(rc.readBytes(l))
 	case 0xc4:
 		l := int(rc.readUint8())
 		return rc.readBytes(l)
@@ -340,7 +339,7 @@ func (rc *resolveCall) resolveMap(elements int) map[string]any {
 		case string:
 			k = kv
 		case []byte:
-			k = unsafeslice.StringFromByteSlice(kv)
+			k = internal.UnsafeStringCast(kv)
 		default:
 			rc.err = errors.New("fastmsgpack doesn't support non-string keys in maps")
 			return nil

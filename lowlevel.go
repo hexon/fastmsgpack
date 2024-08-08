@@ -3,7 +3,6 @@ package fastmsgpack
 import (
 	"fmt"
 
-	"github.com/alecthomas/unsafeslice"
 	"github.com/hexon/fastmsgpack/internal"
 )
 
@@ -64,7 +63,7 @@ func SplitMap(data []byte, dict *Dict) ([]string, [][]byte, error) {
 		case string:
 			keys[i] = kv
 		case []byte:
-			keys[i] = unsafeslice.StringFromByteSlice(kv)
+			keys[i] = internal.UnsafeStringCast(kv)
 		default:
 			return nil, nil, fmt.Errorf("fastmsgpack doesn't support non-string keys in maps (like %T)", kv)
 		}

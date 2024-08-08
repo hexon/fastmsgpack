@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/alecthomas/unsafeslice"
 	"github.com/hexon/fastmsgpack/internal"
 )
 
@@ -55,7 +54,7 @@ func (rc *resolveCall) selectFromMap(interests map[string]any, mustSkip bool) {
 		case string:
 			k = kv
 		case []byte:
-			k = unsafeslice.StringFromByteSlice(kv)
+			k = internal.UnsafeStringCast(kv)
 		default:
 			rc.err = errors.New("fastmsgpack doesn't support non-string keys in maps")
 			return
