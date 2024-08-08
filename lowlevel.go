@@ -1,40 +1,29 @@
 package fastmsgpack
 
 import (
-	"fmt"
-
 	"github.com/hexon/fastmsgpack/internal"
 )
 
 // Size returns the number of bytes the first entry in the given msgpack data is.
 func Size(data []byte) (int, error) {
-	rc := resolveCall{
-		data: data,
-	}
-	rc.skipValue()
-	return rc.offset, rc.err
+	return internal.ValueLength(data)
 }
 
 // SplitArray splits a msgpack array into the msgpack chunks of its components.
 // The returned slices point into the given data.
 func SplitArray(data []byte) ([][]byte, error) {
-	data = data[internal.DecodeLengthPrefixExtension(data):]
-	elements, consume, ok := internal.DecodeArrayLen(data)
-	if !ok {
-		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", data[0], 0)
+	d := NewDecoder(data, nil)
+	elements, err := d.DecodeArrayLen()
+	if err != nil {
+		return nil, err
 	}
 	ret := make([][]byte, elements)
-	rc := resolveCall{
-		data:   data,
-		offset: consume,
-	}
 	for i := 0; elements > i; i++ {
-		start := rc.offset
-		rc.skipValue()
-		if rc.err != nil {
-			return nil, rc.err
+		start := d.offset
+		if err := d.Skip(); err != nil {
+			return nil, err
 		}
-		ret[i] = data[start:rc.offset]
+		ret[i] = data[start:d.offset]
 	}
 	return ret, nil
 }
@@ -42,37 +31,24 @@ func SplitArray(data []byte) ([][]byte, error) {
 // SplitMap splits a msgpack map into string-keys and the msgpack-values. It does not decode the values.
 // The returned slices point into the given data.
 func SplitMap(data []byte, dict *Dict) ([]string, [][]byte, error) {
-	data = data[internal.DecodeLengthPrefixExtension(data):]
-	elements, consume, ok := internal.DecodeMapLen(data)
-	if !ok {
-		return nil, nil, fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", data[0], 0)
+	d := NewDecoder(data, nil)
+	elements, err := d.DecodeArrayLen()
+	if err != nil {
+		return nil, nil, err
 	}
+
 	keys := make([]string, elements)
 	values := make([][]byte, elements)
-	rc := resolveCall{
-		dict:   dict,
-		data:   data,
-		offset: consume,
-	}
 	for i := 0; elements > i; i++ {
-		kv := rc.resolveValue()
-		if rc.err != nil {
-			return nil, nil, rc.err
+		keys[i], err = d.DecodeString()
+		if err != nil {
+			return nil, nil, err
 		}
-		switch kv := kv.(type) {
-		case string:
-			keys[i] = kv
-		case []byte:
-			keys[i] = internal.UnsafeStringCast(kv)
-		default:
-			return nil, nil, fmt.Errorf("fastmsgpack doesn't support non-string keys in maps (like %T)", kv)
+		start := d.offset
+		if err := d.Skip(); err != nil {
+			return nil, nil, err
 		}
-		start := rc.offset
-		rc.skipValue()
-		if rc.err != nil {
-			return nil, nil, rc.err
-		}
-		values[i] = data[start:rc.offset]
+		values[i] = data[start:d.offset]
 	}
 	return keys, values, nil
 }

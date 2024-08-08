@@ -2,31 +2,17 @@
 package fastmsgpack
 
 import (
-	"encoding/binary"
 	"errors"
-	"fmt"
-	"math"
-	"strconv"
 	"strings"
-	"time"
-
-	"github.com/hexon/fastmsgpack/internal"
 )
 
 // Decode the given data (with the optional given dictionary).
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
 // The dictionary is optional and can be nil.
-func Decode(data []byte, dict *Dict) (_ any, retErr error) {
-	defer func() {
-		if r := recover(); r != nil {
-			retErr = fmt.Errorf("decoder panicked, likely bad input: %v", r)
-		}
-	}()
-	rc := resolveCall{
-		dict: dict,
-		data: data,
-	}
-	return rc.resolveValue(), rc.err
+func Decode(data []byte, dict *Dict) (any, error) {
+	d := NewDecoder(data, dict)
+	v, _, err := d.decodeValue(data)
+	return v, err
 }
 
 // NewResolver prepares a new resolver. It can be reused for multiple Resolve calls.
@@ -101,390 +87,84 @@ func (r *Resolver) addField(field string, what any) error {
 // Resolve scans through the given data and returns an array with the fields you've requested from this Resolver.
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
 func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
-	defer func() {
-		if r := recover(); r != nil {
-			retErr = fmt.Errorf("decoder panicked, likely bad input: %v", r)
-		}
-	}()
 	rc := resolveCall{
-		dict:   r.dict,
-		data:   data,
-		result: make([]any, r.numFields),
+		decoder: NewDecoder(data, r.dict),
+		result:  make([]any, r.numFields),
 	}
-	rc.recurseMap(r.interests, false)
-	return rc.result, rc.err
+	if err := rc.recurseMap(r.interests, false); err != nil {
+		return nil, err
+	}
+	return rc.result, nil
 }
 
 type resolveCall struct {
-	dict     *Dict
-	data     []byte
-	result   []any
-	selected []byte
-	err      error
-	offset   int
+	decoder *Decoder
+	result  []any
 }
 
-func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) {
-	fastSkipStart := -1
-	if l := internal.DecodeLengthPrefixExtension(rc.data[rc.offset:]); l > 0 {
-		fastSkipStart = rc.offset
-		rc.offset += l
+func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) error {
+	elements, err := rc.decoder.DecodeMapLen()
+	if err != nil {
+		return err
 	}
-	elements, consume, ok := internal.DecodeMapLen(rc.data[rc.offset:])
-	if !ok {
-		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", rc.data[rc.offset], rc.offset)
-		return
-	}
-	rc.offset += consume
 
 	sought := len(interests)
-	for i := 0; elements > i; i++ {
-		kv := rc.resolveValue()
-		if rc.err != nil {
-			return
-		}
-		var k string
-		switch kv := kv.(type) {
-		case string:
-			k = kv
-		case []byte:
-			k = internal.UnsafeStringCast(kv)
-		default:
-			rc.err = errors.New("fastmsgpack doesn't support non-string keys in maps")
-			return
+	for elements > 0 {
+		elements--
+		k, err := rc.decoder.DecodeString()
+		if err != nil {
+			return err
 		}
 		switch x := interests[k].(type) {
 		case int:
-			rc.result[x] = rc.resolveValue()
+			rc.result[x], err = rc.decoder.DecodeValue()
+			if err != nil {
+				return err
+			}
 			sought--
 		case map[string]any:
 			sought--
-			rc.recurseMap(x, mustSkip || sought > 0)
+			if err := rc.recurseMap(x, mustSkip || sought > 0); err != nil {
+				return err
+			}
 		case subresolver:
 			sought--
-			rc.recurseArray(x, mustSkip || sought > 0)
+			if err := rc.recurseArray(x, mustSkip || sought > 0); err != nil {
+				return err
+			}
 		default:
-			rc.skipValue()
+			if err := rc.decoder.Skip(); err != nil {
+				return err
+			}
 		}
-		if rc.err != nil {
-			return
+		if elements == 0 {
+			break
 		}
 		if sought == 0 {
 			if mustSkip {
-				i++
-				if fastSkipStart != -1 && elements > i {
-					// This map was wrapped with a length-encoding. Jump back to the beginning, so we skip over the entire object at once.
-					rc.offset = fastSkipStart
-					rc.skipValue()
-					return
-				}
-				for ; elements > i; i++ {
-					rc.skipValue()
-					rc.skipValue()
-				}
+				return rc.decoder.Break()
 			}
-			return
+			return nil
 		}
 	}
+	return nil
 }
 
-func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) {
-	rc.offset += internal.DecodeLengthPrefixExtension(rc.data[rc.offset:])
-	elements, consume, ok := internal.DecodeArrayLen(rc.data[rc.offset:])
-	if !ok {
-		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", rc.data[rc.offset], rc.offset)
-		return
+func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) error {
+	elements, err := rc.decoder.DecodeArrayLen()
+	if err != nil {
+		return err
 	}
-	rc.offset += consume
 	parentResults := rc.result
 	results := make([][]any, elements)
 	for i := 0; elements > i; i++ {
 		rc.result = make([]any, sub.numFields)
-		rc.recurseMap(sub.interests, mustSkip || i < elements-1)
-		if rc.err != nil {
-			return
+		if err := rc.recurseMap(sub.interests, mustSkip || i < elements-1); err != nil {
+			return err
 		}
 		results[i] = rc.result
 	}
 	rc.result = parentResults
 	rc.result[sub.destination] = results
-}
-
-func (rc *resolveCall) resolveValue() any {
-	b := rc.data[rc.offset]
-	rc.offset++
-	switch b & 0b11100000 {
-	case 0b00000000, 0b00100000, 0b01000000, 0b01100000:
-		return int(b)
-	case 0b11100000:
-		return int(int8(b))
-	case 0b10100000:
-		l := int(b & 0b00011111)
-		rc.offset += l
-		return internal.UnsafeStringCast(rc.data[rc.offset-l : rc.offset])
-	case 0b10000000:
-		if b&0b11110000 == 0b10010000 {
-			return rc.resolveArray(int(b & 0b00001111))
-		} else {
-			return rc.resolveMap(int(b & 0b00001111))
-		}
-	}
-	switch b {
-	case 0xc0:
-		return nil
-	case 0xc2:
-		return false
-	case 0xc3:
-		return true
-	case 0xcc:
-		return int(rc.readUint8())
-	case 0xcd:
-		return int(rc.readUint16())
-	case 0xce:
-		return int(rc.readUint32())
-	case 0xcf:
-		return int(rc.readUint64())
-	case 0xd0:
-		return int(int8(rc.readUint8()))
-	case 0xd1:
-		return int(int16(rc.readUint16()))
-	case 0xd2:
-		return int(int32(rc.readUint32()))
-	case 0xd3:
-		return int(int64(rc.readUint64()))
-	case 0xca:
-		return math.Float32frombits(rc.readUint32())
-	case 0xcb:
-		return math.Float64frombits(rc.readUint64())
-	case 0xd9:
-		l := int(rc.readUint8())
-		return internal.UnsafeStringCast(rc.readBytes(l))
-	case 0xda:
-		l := int(rc.readUint16())
-		return internal.UnsafeStringCast(rc.readBytes(l))
-	case 0xdb:
-		l := int(rc.readUint32())
-		return internal.UnsafeStringCast(rc.readBytes(l))
-	case 0xc4:
-		l := int(rc.readUint8())
-		return rc.readBytes(l)
-	case 0xc5:
-		l := int(rc.readUint16())
-		return rc.readBytes(l)
-	case 0xc6:
-		l := int(rc.readUint32())
-		return rc.readBytes(l)
-	case 0xdc:
-		return rc.resolveArray(int(rc.readUint16()))
-	case 0xdd:
-		return rc.resolveArray(int(rc.readUint32()))
-	case 0xde:
-		return rc.resolveMap(int(rc.readUint16()))
-	case 0xdf:
-		return rc.resolveMap(int(rc.readUint32()))
-	case 0xd4:
-		rc.offset += 2
-		return rc.readExtension(rc.data[rc.offset-2], rc.data[rc.offset-1:rc.offset])
-	case 0xd5:
-		rc.offset += 3
-		return rc.readExtension(rc.data[rc.offset-3], rc.data[rc.offset-2:rc.offset])
-	case 0xd6:
-		rc.offset += 5
-		return rc.readExtension(rc.data[rc.offset-5], rc.data[rc.offset-4:rc.offset])
-	case 0xd7:
-		rc.offset += 9
-		return rc.readExtension(rc.data[rc.offset-9], rc.data[rc.offset-8:rc.offset])
-	case 0xd8:
-		rc.offset += 17
-		return rc.readExtension(rc.data[rc.offset-17], rc.data[rc.offset-16:rc.offset])
-	case 0xc7:
-		l := int(rc.readUint8())
-		rc.offset += 1 + l
-		return rc.readExtension(rc.data[rc.offset-l-1], rc.data[rc.offset-l:rc.offset])
-	case 0xc8:
-		l := int(rc.readUint16())
-		rc.offset += 1 + l
-		return rc.readExtension(rc.data[rc.offset-l-1], rc.data[rc.offset-l:rc.offset])
-	case 0xc9:
-		l := int(rc.readUint32())
-		rc.offset += 1 + l
-		return rc.readExtension(rc.data[rc.offset-l-1], rc.data[rc.offset-l:rc.offset])
-	default:
-		rc.offset--
-		rc.err = fmt.Errorf("unexpected msgpack byte %02x while decoding at offset %d", b, rc.offset)
-		return rc.err
-	}
-}
-
-func (rc *resolveCall) resolveArray(elements int) []any {
-	ret := make([]any, elements)
-	for i := 0; elements > i; i++ {
-		ret[i] = rc.resolveValue()
-		if rc.err != nil {
-			return nil
-		}
-	}
-	return ret
-}
-
-func (rc *resolveCall) resolveMap(elements int) map[string]any {
-	ret := make(map[string]any, elements)
-	for i := 0; elements > i; i++ {
-		kv := rc.resolveValue()
-		if rc.err != nil {
-			return nil
-		}
-		var k string
-		switch kv := kv.(type) {
-		case string:
-			k = kv
-		case []byte:
-			k = internal.UnsafeStringCast(kv)
-		default:
-			rc.err = errors.New("fastmsgpack doesn't support non-string keys in maps")
-			return nil
-		}
-		ret[k] = rc.resolveValue()
-		if rc.err != nil {
-			return nil
-		}
-	}
-	return ret
-}
-
-func (rc *resolveCall) readUint8() uint8 {
-	rc.offset++
-	return uint8(rc.data[rc.offset-1])
-}
-
-func (rc *resolveCall) readUint16() uint16 {
-	rc.offset += 2
-	return binary.BigEndian.Uint16(rc.data[rc.offset-2:])
-}
-
-func (rc *resolveCall) readUint32() uint32 {
-	rc.offset += 4
-	return binary.BigEndian.Uint32(rc.data[rc.offset-4:])
-}
-
-func (rc *resolveCall) readUint64() uint64 {
-	rc.offset += 8
-	return binary.BigEndian.Uint64(rc.data[rc.offset-8:])
-}
-
-func (rc *resolveCall) readBytes(n int) []byte {
-	rc.offset += n
-	return rc.data[rc.offset-n : rc.offset]
-}
-
-func (rc *resolveCall) readExtension(extType uint8, data []byte) any {
-	switch int8(extType) {
-	case -1:
-		switch len(data) {
-		case 4:
-			return time.Unix(int64(binary.BigEndian.Uint32(data)), 0)
-		case 8:
-			n := binary.BigEndian.Uint64(data)
-			return time.Unix(int64(n&0x00000003ffffffff), int64(n>>34))
-		case 12:
-			nsec := binary.BigEndian.Uint32(data[:4])
-			sec := binary.BigEndian.Uint64(data[4:])
-			return time.Unix(int64(sec), int64(nsec))
-		}
-		rc.err = fmt.Errorf("failed to decode timestamp of %d bytes", len(data))
-		return rc.err
-
-	case int8(math.MinInt8): // Interned string
-		n, ok := internal.DecodeBytesToUint(data)
-		if !ok {
-			rc.err = errors.New("failed to decode index number of interned string")
-			return rc.err
-		}
-		v, err := rc.dict.lookupAny(n)
-		if err != nil {
-			rc.err = err
-			return err
-		}
-		return v
-
-	case 17: // Length-prefixed entry
-		rc.offset -= len(data)
-		return rc.resolveValue()
-
-	default:
-		return Extension{Type: int8(extType), Data: data}
-	}
-}
-
-func (rc *resolveCall) skipValue() {
-	b := rc.data[rc.offset]
-	rc.offset++
-	switch b & 0b11100000 {
-	case 0b00000000, 0b00100000, 0b01000000, 0b01100000:
-		return
-	case 0b11100000:
-		return
-	case 0b10100000:
-		rc.offset += int(b & 0b00011111)
-		return
-	case 0b10000000:
-		if b&0b11110000 == 0b10010000 {
-			rc.skipValues(int(b & 0b00001111))
-		} else {
-			rc.skipValues(2 * int(b&0b00001111))
-		}
-		return
-	}
-	switch b {
-	case 0xc0:
-	case 0xc2:
-	case 0xc3:
-	case 0xcc, 0xd0:
-		rc.offset++
-	case 0xcd, 0xd1:
-		rc.offset += 2
-	case 0xce, 0xd2, 0xca:
-		rc.offset += 4
-	case 0xcf, 0xd3, 0xcb:
-		rc.offset += 8
-	case 0xd9, 0xc4:
-		rc.offset += int(rc.readUint8())
-	case 0xda, 0xc5:
-		rc.offset += int(rc.readUint16())
-	case 0xdb, 0xc6:
-		rc.offset += int(rc.readUint32())
-	case 0xdc:
-		rc.skipValues(int(rc.readUint16()))
-	case 0xdd:
-		rc.skipValues(int(rc.readUint32()))
-	case 0xde:
-		rc.skipValues(2 * int(rc.readUint16()))
-	case 0xdf:
-		rc.skipValues(2 * int(rc.readUint32()))
-	case 0xd4:
-		rc.offset += 2
-	case 0xd5:
-		rc.offset += 3
-	case 0xd6:
-		rc.offset += 5
-	case 0xd7:
-		rc.offset += 9
-	case 0xd8:
-		rc.offset += 17
-	case 0xc7:
-		rc.offset += 1 + int(rc.readUint8())
-	case 0xc8:
-		rc.offset += 1 + int(rc.readUint16())
-	case 0xc9:
-		rc.offset += 1 + int(rc.readUint32())
-	default:
-		rc.offset--
-		rc.err = errors.New("unexpected msgpack byte while decoding: " + strconv.FormatInt(int64(b), 10))
-	}
-}
-
-func (rc *resolveCall) skipValues(n int) {
-	for i := 0; n > i; i++ {
-		rc.skipValue()
-	}
+	return nil
 }

@@ -2,8 +2,6 @@ package fastmsgpack
 
 import (
 	"encoding/binary"
-	"errors"
-	"fmt"
 
 	"github.com/hexon/fastmsgpack/internal"
 )
@@ -11,109 +9,93 @@ import (
 // Select returns a new msgpack containing only the requested fields.
 // The result is appended to dst and returned. dst can be nil.
 func (r *Resolver) Select(dst, data []byte) (_ []byte, retErr error) {
-	defer func() {
-		if r := recover(); r != nil {
-			retErr = fmt.Errorf("decoder panicked, likely bad input: %v", r)
-		}
-	}()
-	rc := resolveCall{
-		dict:     r.dict,
-		data:     data,
+	sc := selectCall{
+		decoder:  NewDecoder(data, r.dict),
 		selected: dst,
 	}
-	rc.selectFromMap(r.interests, false)
-	return rc.selected, rc.err
+	if err := sc.selectFromMap(r.interests, false); err != nil {
+		return nil, err
+	}
+	return sc.selected, nil
 }
 
-func (rc *resolveCall) selectFromMap(interests map[string]any, mustSkip bool) {
-	fastSkipStart := -1
-	if l := internal.DecodeLengthPrefixExtension(rc.data[rc.offset:]); l > 0 {
-		fastSkipStart = rc.offset
-		rc.offset += l
-	}
-	elements, consume, ok := internal.DecodeMapLen(rc.data[rc.offset:])
-	if !ok {
-		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting a map at offset %d", rc.data[rc.offset], rc.offset)
-		return
-	}
-	rc.offset += consume
+type selectCall struct {
+	decoder  *Decoder
+	result   []any
+	selected []byte
+}
 
-	rc.selected = append(rc.selected, 0xdf, 0, 0, 0, 0)
-	lengthOffset := len(rc.selected) - 4
+func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool) error {
+	elements, err := sc.decoder.DecodeMapLen()
+	if err != nil {
+		return err
+	}
+
+	sc.selected = append(sc.selected, 0xdf, 0, 0, 0, 0)
+	lengthOffset := len(sc.selected) - 4
 	newLength := 0
 
 	sought := len(interests)
-	for i := 0; elements > i; i++ {
-		keyAt := rc.offset
-		kv := rc.resolveValue()
-		if rc.err != nil {
-			return
-		}
-		var k string
-		switch kv := kv.(type) {
-		case string:
-			k = kv
-		case []byte:
-			k = internal.UnsafeStringCast(kv)
-		default:
-			rc.err = errors.New("fastmsgpack doesn't support non-string keys in maps")
-			return
+	for elements > 0 {
+		elements--
+		keyAt := sc.decoder.offset
+		k, err := sc.decoder.DecodeString()
+		if err != nil {
+			return err
 		}
 		switch x := interests[k].(type) {
 		case int:
-			rc.skipValue()
-			rc.selected = append(rc.selected, rc.data[keyAt:rc.offset]...)
+			if err := sc.decoder.Skip(); err != nil {
+				return err
+			}
+			sc.selected = append(sc.selected, sc.decoder.data[keyAt:sc.decoder.offset]...)
 			sought--
 			newLength++
 		case map[string]any:
-			rc.selected = append(rc.selected, rc.data[keyAt:rc.offset]...)
+			sc.selected = append(sc.selected, sc.decoder.data[keyAt:sc.decoder.offset]...)
 			sought--
-			rc.selectFromMap(x, mustSkip || sought > 0)
+			if err := sc.selectFromMap(x, mustSkip || sought > 0); err != nil {
+				return err
+			}
 			newLength++
 		case subresolver:
-			rc.selected = append(rc.selected, rc.data[keyAt:rc.offset]...)
+			sc.selected = append(sc.selected, sc.decoder.data[keyAt:sc.decoder.offset]...)
 			sought--
-			rc.selectFromArray(x, mustSkip || sought > 0)
+			if err := sc.selectFromArray(x, mustSkip || sought > 0); err != nil {
+				return err
+			}
 			newLength++
 		default:
-			rc.skipValue()
+			if err := sc.decoder.Skip(); err != nil {
+				return err
+			}
 		}
-		if rc.err != nil {
-			return
+		if elements == 0 {
+			break
 		}
 		if sought == 0 {
 			if mustSkip {
-				i++
-				if fastSkipStart != -1 && elements > i {
-					// This map was wrapped with a length-encoding. Jump back to the beginning, so we skip over the entire object at once.
-					rc.offset = fastSkipStart
-					rc.skipValue()
-					break
-				}
-				for ; elements > i; i++ {
-					rc.skipValue()
-					rc.skipValue()
+				if err := sc.decoder.Break(); err != nil {
+					return err
 				}
 			}
 			break
 		}
 	}
-	binary.BigEndian.PutUint32(rc.selected[lengthOffset:], uint32(newLength))
+	binary.BigEndian.PutUint32(sc.selected[lengthOffset:], uint32(newLength))
+	return nil
 }
 
-func (rc *resolveCall) selectFromArray(sub subresolver, mustSkip bool) {
-	rc.offset += internal.DecodeLengthPrefixExtension(rc.data[rc.offset:])
-	elements, consume, ok := internal.DecodeArrayLen(rc.data[rc.offset:])
-	if !ok {
-		rc.err = fmt.Errorf("encountered msgpack byte %02x while expecting an array at offset %d", rc.data[rc.offset], rc.offset)
-		return
+func (sc *selectCall) selectFromArray(sub subresolver, mustSkip bool) error {
+	elements, err := sc.decoder.DecodeArrayLen()
+	if err != nil {
+		return err
 	}
-	rc.selected = append(rc.selected, rc.data[rc.offset:][:consume]...)
-	rc.offset += consume
+	sc.selected, _ = internal.AppendArrayLen(sc.selected, elements)
 	for i := 0; elements > i; i++ {
-		rc.selectFromMap(sub.interests, mustSkip || i < elements-1)
-		if rc.err != nil {
-			return
+		if err := sc.selectFromMap(sub.interests, mustSkip || i < elements-1); err != nil {
+			return err
 		}
 	}
+	return nil
 }

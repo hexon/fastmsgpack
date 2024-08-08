@@ -226,6 +226,9 @@ func (d *Decoder) Skip() error {
 // This can only be called before the last element of the array/map is read, because otherwise you'd break out one level higher.
 func (d *Decoder) Break() error {
 	l := len(d.skipInfo) - 1
+	if l < 0 {
+		return errors.New("fastmsgpack.Decoder.Break: can't Break at the top level")
+	}
 	si := d.skipInfo[l]
 	d.skipInfo = d.skipInfo[:l]
 	if si.fastSkip > 0 {
@@ -242,6 +245,9 @@ func (d *Decoder) Break() error {
 
 func (d *Decoder) consumedOne() {
 	l := len(d.skipInfo) - 1
+	if l < 0 {
+		return
+	}
 	if d.skipInfo[l].remainingElements > 1 {
 		d.skipInfo[l].remainingElements--
 	} else {
