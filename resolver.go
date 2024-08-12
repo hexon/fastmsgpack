@@ -83,6 +83,45 @@ func (r *Resolver) addField(field string, what any) error {
 	return nil
 }
 
+type SubresolverDescription struct {
+	Fields       []string
+	Subresolvers map[string]SubresolverDescription
+	Index        int
+}
+
+// Describe returns which fields and subresolvers were registered to this Resolver.
+// The returned values should not be modified.
+func (r *Resolver) Describe() ([]string, map[string]SubresolverDescription) {
+	fields := make([]string, r.numFields)
+	subs := map[string]SubresolverDescription{}
+	recurseInterests(fields, subs, r.interests, "")
+	fields = fields[:len(fields)-len(subs)]
+	return fields, subs
+}
+
+func recurseInterests(fields []string, subs map[string]SubresolverDescription, i any, prefix string) {
+	switch i := i.(type) {
+	case int:
+		fields[i] = prefix
+	case map[string]any:
+		if prefix != "" {
+			prefix += "."
+		}
+		for k, v := range i {
+			recurseInterests(fields, subs, v, prefix+k)
+		}
+	case subresolver:
+		sd := SubresolverDescription{
+			Index:        i.destination,
+			Fields:       make([]string, i.numFields),
+			Subresolvers: map[string]SubresolverDescription{},
+		}
+		recurseInterests(sd.Fields, sd.Subresolvers, i.interests, "")
+		sd.Fields = sd.Fields[:len(sd.Fields)-len(sd.Subresolvers)]
+		subs[prefix] = sd
+	}
+}
+
 // Resolve scans through the given data and returns an array with the fields you've requested from this Resolver.
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
 func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
