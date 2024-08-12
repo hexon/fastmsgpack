@@ -5,6 +5,7 @@ package internal
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 )
@@ -138,18 +139,22 @@ func DescribeValue(data []byte) string {
 	}
 	if data[0] < 0xc0 {
 		if data[0] <= 0x7f {
-			return "positive fixint"
+			return fmt.Sprintf("positive fixint (%d)", int(data[0]))
 		}
 		if data[0] <= 0x8f {
-			return "fixmap"
+			return fmt.Sprintf("fixmap (%d entries)", int(data[0]&0b00001111))
 		}
 		if data[0] <= 0x9f {
-			return "fixarray"
+			return fmt.Sprintf("fixarray (%d entries)", int(data[0]&0b00001111))
 		}
-		return "fixstr"
+		s := int(data[0]&0b00011111) + 1
+		if len(data) < s {
+			return "truncated fixstr"
+		}
+		return fmt.Sprintf("fixstr (%q)", UnsafeStringCast(data[1:s]))
 	}
 	if data[0] >= 0xe0 {
-		return "negative fixint"
+		return fmt.Sprintf("negative fixint (%d)", int(int8(data[0])))
 	}
 	switch data[0] {
 	case 0xc0:
@@ -159,61 +164,181 @@ func DescribeValue(data []byte) string {
 	case 0xc3:
 		return "true"
 	case 0xc4:
+		if len(data) < 2 {
+			return "truncated bin 8"
+		}
+		s := int(data[1]) + 2
+		if len(data) < s {
+			return "truncated bin 8"
+		}
 		return "bin 8"
 	case 0xc5:
+		if len(data) < 3 {
+			return "truncated bin 16"
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return "truncated bin 16"
+		}
 		return "bin 16"
 	case 0xc6:
+		if len(data) < 5 {
+			return "truncated bin 32"
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return "truncated bin 32"
+		}
 		return "bin 32"
 	case 0xc7:
-		return "ext 8"
+		if len(data) < 3 {
+			return "truncated ext 8"
+		}
+		s := int(data[1]) + 3
+		if len(data) < s {
+			return "truncated ext 8"
+		}
+		return fmt.Sprintf("ext 8 (type %d, %d bytes)", int8(data[2]), len(data[3:s]))
 	case 0xc8:
-		return "ext 16"
+		if len(data) < 4 {
+			return "truncated ext 16"
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
+		if len(data) < s {
+			return "truncated ext 16"
+		}
+		return fmt.Sprintf("ext 16 (type %d, %d bytes)", int8(data[3]), len(data[4:s]))
 	case 0xc9:
-		return "ext 32"
+		if len(data) < 6 {
+			return "truncated ext 32"
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
+		if len(data) < s {
+			return "truncated ext 32"
+		}
+		return fmt.Sprintf("ext 32 (type %d, %d bytes)", int8(data[5]), len(data[6:s]))
 	case 0xca:
-		return "float 32"
+		if len(data) < 5 {
+			return "truncated float 32"
+		}
+		return fmt.Sprintf("float 32 (%f)", math.Float32frombits(binary.BigEndian.Uint32(data[1:5])))
 	case 0xcb:
-		return "float 64"
+		if len(data) < 9 {
+			return "truncated float 64"
+		}
+		return fmt.Sprintf("float 64 (%f)", math.Float64frombits(binary.BigEndian.Uint64(data[1:9])))
 	case 0xcc:
-		return "uint 8"
+		if len(data) < 2 {
+			return "truncated uint 8"
+		}
+		return fmt.Sprintf("uint 8 (%d)", int(data[1]))
 	case 0xcd:
-		return "uint 16"
+		if len(data) < 3 {
+			return "truncated uint 16"
+		}
+		return fmt.Sprintf("uint 16 (%d)", int(binary.BigEndian.Uint16(data[1:3])))
 	case 0xce:
-		return "uint 32"
+		if len(data) < 5 {
+			return "truncated uint 32"
+		}
+		return fmt.Sprintf("uint 32 (%d)", int(binary.BigEndian.Uint32(data[1:5])))
 	case 0xcf:
-		return "uint 64"
+		if len(data) < 9 {
+			return "truncated uint 64"
+		}
+		return fmt.Sprintf("uint 64 (%d)", int(binary.BigEndian.Uint64(data[1:9])))
 	case 0xd0:
-		return "int 8"
+		if len(data) < 2 {
+			return "truncated int 8"
+		}
+		return fmt.Sprintf("int 8 (%d)", int(int8(data[1])))
 	case 0xd1:
-		return "int 16"
+		if len(data) < 3 {
+			return "truncated int 16"
+		}
+		return fmt.Sprintf("int 16 (%d)", int(int16(binary.BigEndian.Uint16(data[1:3]))))
 	case 0xd2:
-		return "int 32"
+		if len(data) < 5 {
+			return "truncated int 32"
+		}
+		return fmt.Sprintf("int 32 (%d)", int(int32(binary.BigEndian.Uint32(data[1:5]))))
 	case 0xd3:
-		return "int 64"
+		if len(data) < 9 {
+			return "truncated int 64"
+		}
+		return fmt.Sprintf("int 64 (%d)", int(int64(binary.BigEndian.Uint64(data[1:9]))))
 	case 0xd4:
-		return "fixext 1"
+		if len(data) < 3 {
+			return "truncated fixext 1"
+		}
+		return fmt.Sprintf("fixext 1 (type %d, %d bytes)", int8(data[1]), len(data[2:3]))
 	case 0xd5:
-		return "fixext 2"
+		if len(data) < 4 {
+			return "truncated fixext 2"
+		}
+		return fmt.Sprintf("fixext 2 (type %d, %d bytes)", int8(data[1]), len(data[2:4]))
 	case 0xd6:
-		return "fixext 4"
+		if len(data) < 6 {
+			return "truncated fixext 4"
+		}
+		return fmt.Sprintf("fixext 4 (type %d, %d bytes)", int8(data[1]), len(data[2:6]))
 	case 0xd7:
-		return "fixext 8"
+		if len(data) < 10 {
+			return "truncated fixext 8"
+		}
+		return fmt.Sprintf("fixext 8 (type %d, %d bytes)", int8(data[1]), len(data[2:10]))
 	case 0xd8:
-		return "fixext 16"
+		if len(data) < 18 {
+			return "truncated fixext 16"
+		}
+		return fmt.Sprintf("fixext 16 (type %d, %d bytes)", int8(data[1]), len(data[2:18]))
 	case 0xd9:
-		return "str 8"
+		if len(data) < 2 {
+			return "truncated str 8"
+		}
+		s := int(data[1]) + 2
+		if len(data) < s {
+			return "truncated str 8"
+		}
+		return fmt.Sprintf("str 8 (%q)", UnsafeStringCast(data[2:s]))
 	case 0xda:
-		return "str 16"
+		if len(data) < 3 {
+			return "truncated str 16"
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return "truncated str 16"
+		}
+		return fmt.Sprintf("str 16 (%q)", UnsafeStringCast(data[3:s]))
 	case 0xdb:
-		return "str 32"
+		if len(data) < 5 {
+			return "truncated str 32"
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return "truncated str 32"
+		}
+		return fmt.Sprintf("str 32 (%q)", UnsafeStringCast(data[5:s]))
 	case 0xdc:
-		return "array 16"
+		if len(data) < 3 {
+			return "truncated array 16"
+		}
+		return fmt.Sprintf("array 16 (%d entries)", int(binary.BigEndian.Uint16(data[1:3])))
 	case 0xdd:
-		return "array 32"
+		if len(data) < 5 {
+			return "truncated array 32"
+		}
+		return fmt.Sprintf("array 32 (%d entries)", int(binary.BigEndian.Uint32(data[1:5])))
 	case 0xde:
-		return "map 16"
+		if len(data) < 3 {
+			return "truncated map 16"
+		}
+		return fmt.Sprintf("map 16 (%d entries)", int(binary.BigEndian.Uint16(data[1:3])))
 	case 0xdf:
-		return "map 32"
+		if len(data) < 5 {
+			return "truncated map 32"
+		}
+		return fmt.Sprintf("map 32 (%d entries)", int(binary.BigEndian.Uint32(data[1:5])))
 	}
 	return "0xc1"
 }

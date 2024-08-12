@@ -28,6 +28,7 @@ func main() {
 		fmt.Fprintf(&buf, "import (\n")
 		fmt.Fprintf(&buf, "	%q\n", "encoding/binary")
 		fmt.Fprintf(&buf, "	%q\n", "errors")
+		fmt.Fprintf(&buf, "	%q\n", "fmt")
 		fmt.Fprintf(&buf, "	%q\n", "math")
 		fmt.Fprintf(&buf, "	%q\n", "time")
 		fmt.Fprintf(&buf, ")\n")
@@ -125,12 +126,12 @@ func generate(w *bytes.Buffer, retType, name string) {
 	switch retType {
 	case "float32", "float64":
 		guaranteedLength = 5
-		emitLengthCheck(w, retType, fmt.Sprint(guaranteedLength), "internal.ErrShortInputForFloat")
+		emitLengthCheck(w, retType, MsgpackType{}, fmt.Sprint(guaranteedLength), "internal.ErrShortInputForFloat")
 	case "time":
 		guaranteedLength = 6
-		emitLengthCheck(w, retType, fmt.Sprint(guaranteedLength), "internal.ErrShortInputForTime")
+		emitLengthCheck(w, retType, MsgpackType{}, fmt.Sprint(guaranteedLength), "internal.ErrShortInputForTime")
 	default:
-		emitLengthCheck(w, retType, fmt.Sprint(guaranteedLength), "internal.ErrShortInput")
+		emitLengthCheck(w, retType, MsgpackType{}, fmt.Sprint(guaranteedLength), "internal.ErrShortInput")
 	}
 	if retType == "string" {
 		fmt.Fprintf(w, "	if data[0] & 0b11100000 == 0b10100000 {\n")
@@ -196,19 +197,35 @@ func generate(w *bytes.Buffer, retType, name string) {
 }
 
 func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLength int, t MsgpackType) {
-	if retType == "_desc" {
-		fmt.Fprintf(w, "		return %q\n", t.Name)
-		return
-	}
 	minLen, preamble, val, lencalc := getDecoder(t)
 	if minLen > guaranteedLength && (preamble != "" || retType != "void") {
-		emitLengthCheck(w, retType, fmt.Sprint(minLen), "internal.ErrShortInput")
+		emitLengthCheck(w, retType, t, fmt.Sprint(minLen), "internal.ErrShortInput")
 	}
 	if preamble != "" {
 		fmt.Fprintf(w, "		%s\n", preamble)
 	}
 	if fmt.Sprint(minLen) != lencalc && retType != "void" {
-		emitLengthCheck(w, retType, lencalc, "internal.ErrShortInput")
+		emitLengthCheck(w, retType, t, lencalc, "internal.ErrShortInput")
+	}
+	switch retType {
+	case "_desc":
+		switch t.DataType {
+		case "array":
+			fmt.Fprintf(w, "		return fmt.Sprintf(%q, %s)\n", t.Name+" (%d entries)", val)
+		case "map":
+			fmt.Fprintf(w, "		return fmt.Sprintf(%q, %s)\n", t.Name+" (%d entries)", val)
+		case "ext":
+			fmt.Fprintf(w, "		return fmt.Sprintf(%q, int8(data[%d]), len(%s))\n", t.Name+" (type %d, %d bytes)", t.ExtTypeAt, val)
+		case "int":
+			fmt.Fprintf(w, "		return fmt.Sprintf(%q, %s)\n", t.Name+" (%d)", val)
+		case "float32", "float64":
+			fmt.Fprintf(w, "		return fmt.Sprintf(%q, %s)\n", t.Name+" (%f)", val)
+		case "string":
+			fmt.Fprintf(w, "		return fmt.Sprintf(%q, %s)\n", t.Name+" (%q)", val)
+		default:
+			fmt.Fprintf(w, "		return %q\n", t.Name)
+		}
+		return
 	}
 	switch t.DataType {
 	case "array":
@@ -287,13 +304,17 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 	}
 }
 
-func emitLengthCheck(w *bytes.Buffer, retType, minLen string, errName string) {
+func emitLengthCheck(w *bytes.Buffer, retType string, t MsgpackType, minLen string, errName string) {
 	fmt.Fprintf(w, "		if len(data) < %s {\n", minLen)
 	switch retType {
 	case "void", "json":
 		fmt.Fprintf(w, "			return 0, %s\n", errName)
 	case "_desc":
-		fmt.Fprintf(w, "			return %q\n", "empty input")
+		if minLen == "1" {
+			fmt.Fprintf(w, "			return %q\n", "empty input")
+		} else {
+			fmt.Fprintf(w, "			return %q\n", "truncated "+t.Name)
+		}
 	default:
 		fmt.Fprintf(w, "			return %s, 0, %s\n", produceZero(retType), errName)
 	}
