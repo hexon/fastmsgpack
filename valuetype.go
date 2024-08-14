@@ -17,6 +17,37 @@ const (
 	TypeUnknownExtension
 )
 
+func (t ValueType) String() string {
+	switch t {
+	case TypeInvalid:
+		return "invalid"
+	case TypeNil:
+		return "nil"
+	case TypeBool:
+		return "bool"
+	case TypeInt:
+		return "int"
+	case TypeFloat32:
+		return "float32"
+	case TypeFloat64:
+		return "float64"
+	case TypeString:
+		return "string"
+	case TypeBinary:
+		return "binary"
+	case TypeArray:
+		return "array"
+	case TypeMap:
+		return "map"
+	case TypeTimestamp:
+		return "timestamp"
+	case TypeUnknownExtension:
+		return "unknown extension"
+	default:
+		return "unknown ValueType constant"
+	}
+}
+
 func decodeType_ext(data []byte, extType int8) ValueType {
 	switch extType {
 	case -1: // Timestamp
