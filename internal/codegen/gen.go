@@ -65,6 +65,7 @@ func main() {
 		fmt.Fprintf(&buf, ")\n")
 		generate(&buf, "any", "decodeValue")
 		generate(&buf, "string", "decodeString")
+		generate(&buf, "type", "DecodeType")
 
 		formatted, err := format.Source(buf.Bytes())
 		if err != nil {
@@ -112,6 +113,8 @@ func generate(w *bytes.Buffer, retType, name string) {
 		fmt.Fprintf(w, "func %s(data []byte, dict *Dict) (any, int, error) {\n", name)
 	case "_desc":
 		fmt.Fprintf(w, "func %s(data []byte) string {\n", name)
+	case "type":
+		fmt.Fprintf(w, "func %s(data []byte) ValueType {\n", name)
 	case "time":
 		fmt.Fprintf(w, "func %s(data []byte) (time.Time, int, error) {\n", name)
 		typeRestricted = true
@@ -187,6 +190,8 @@ func generate(w *bytes.Buffer, retType, name string) {
 		fmt.Fprintf(w, "	return 0, errors.New(%q)\n", "unexpected 0xc1")
 	case "_desc":
 		fmt.Fprintf(w, "	return %q\n", "0xc1")
+	case "type":
+		fmt.Fprintf(w, "	return TypeInvalid\n")
 	default:
 		fmt.Fprintf(w, "	return %s, 0, errors.New(%q + internal.DescribeValue(data) + %q)\n", produceZero(retType), "unexpected ", " when expecting "+retType)
 	}
@@ -194,6 +199,18 @@ func generate(w *bytes.Buffer, retType, name string) {
 }
 
 func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLength int, t MsgpackType) {
+	if retType == "type" && t.DataType != "ext" {
+		switch t.DataType {
+		case "[]byte":
+			fmt.Fprintf(w, "		return TypeBinary\n")
+			return
+		default:
+			fmt.Fprintf(w, "		return Type%s\n", ucfirst(t.DataType))
+			return
+		case "ext":
+			// continue
+		}
+	}
 	minLen, preamble, val, lencalc := getDecoder(t)
 	if minLen > guaranteedLength && (preamble != "" || retType != "void") {
 		emitLengthCheck(w, retType, t, fmt.Sprint(minLen), "internal.ErrShortInput")
@@ -256,6 +273,8 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		case "any", "string":
 			fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]), dict)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
 			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
+		case "type":
+			fmt.Fprintf(w, "		return %s_ext(%s, int8(data[%d]))\n", lcfirst(thisFunc), val, t.ExtTypeAt)
 		default:
 			fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]))\n", lcfirst(thisFunc), val, t.ExtTypeAt)
 			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
@@ -308,6 +327,8 @@ func emitLengthCheck(w *bytes.Buffer, retType string, t MsgpackType, minLen stri
 		} else {
 			fmt.Fprintf(w, "			return %q\n", "truncated "+t.Name)
 		}
+	case "type":
+		fmt.Fprintf(w, "			return TypeInvalid\n")
 	default:
 		fmt.Fprintf(w, "			return %s, 0, %s\n", produceZero(retType), errName)
 	}

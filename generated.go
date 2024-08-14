@@ -361,3 +361,125 @@ func decodeString(data []byte, dict *Dict) (string, int, error) {
 	}
 	return "", 0, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting string")
 }
+
+func DecodeType(data []byte) ValueType {
+	if len(data) < 1 {
+		return TypeInvalid
+	}
+	if data[0] < 0xc0 {
+		if data[0] <= 0x7f {
+			return TypeInt
+		}
+		if data[0] <= 0x8f {
+			return TypeMap
+		}
+		if data[0] <= 0x9f {
+			return TypeArray
+		}
+		return TypeString
+	}
+	if data[0] >= 0xe0 {
+		return TypeInt
+	}
+	switch data[0] {
+	case 0xc0:
+		return TypeNil
+	case 0xc2:
+		return TypeBool
+	case 0xc3:
+		return TypeBool
+	case 0xc4:
+		return TypeBinary
+	case 0xc5:
+		return TypeBinary
+	case 0xc6:
+		return TypeBinary
+	case 0xc7:
+		if len(data) < 3 {
+			return TypeInvalid
+		}
+		s := int(data[1]) + 3
+		if len(data) < s {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[3:s], int8(data[2]))
+	case 0xc8:
+		if len(data) < 4 {
+			return TypeInvalid
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
+		if len(data) < s {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[4:s], int8(data[3]))
+	case 0xc9:
+		if len(data) < 6 {
+			return TypeInvalid
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
+		if len(data) < s {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[6:s], int8(data[5]))
+	case 0xca:
+		return TypeFloat32
+	case 0xcb:
+		return TypeFloat64
+	case 0xcc:
+		return TypeInt
+	case 0xcd:
+		return TypeInt
+	case 0xce:
+		return TypeInt
+	case 0xcf:
+		return TypeInt
+	case 0xd0:
+		return TypeInt
+	case 0xd1:
+		return TypeInt
+	case 0xd2:
+		return TypeInt
+	case 0xd3:
+		return TypeInt
+	case 0xd4:
+		if len(data) < 3 {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[2:3], int8(data[1]))
+	case 0xd5:
+		if len(data) < 4 {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[2:4], int8(data[1]))
+	case 0xd6:
+		if len(data) < 6 {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[2:6], int8(data[1]))
+	case 0xd7:
+		if len(data) < 10 {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[2:10], int8(data[1]))
+	case 0xd8:
+		if len(data) < 18 {
+			return TypeInvalid
+		}
+		return decodeType_ext(data[2:18], int8(data[1]))
+	case 0xd9:
+		return TypeString
+	case 0xda:
+		return TypeString
+	case 0xdb:
+		return TypeString
+	case 0xdc:
+		return TypeArray
+	case 0xdd:
+		return TypeArray
+	case 0xde:
+		return TypeMap
+	case 0xdf:
+		return TypeMap
+	}
+	return TypeInvalid
+}

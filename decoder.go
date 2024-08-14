@@ -243,6 +243,12 @@ func (d *Decoder) Break() error {
 	return nil
 }
 
+// PeekType returns the type of next entry without changing the state of the Decoder.
+// PeekType returning another value than TypeInvalid does not guarantee decoding it will succeed.
+func (d *Decoder) PeekType() ValueType {
+	return DecodeType(d.data[d.offset:])
+}
+
 func (d *Decoder) consumedOne() {
 	l := len(d.skipInfo) - 1
 	if l < 0 {
