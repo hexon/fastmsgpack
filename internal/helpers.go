@@ -8,9 +8,8 @@ import (
 )
 
 var (
-	ErrShortInput         = errors.New("msgpack data ends unexpectedly")
-	ErrShortInputForTime  = errors.New("msgpack data is too short to hold a time")
-	ErrShortInputForFloat = errors.New("msgpack data is too short to hold a float")
+	ErrShortInput        = errors.New("msgpack data ends unexpectedly")
+	ErrShortInputForTime = errors.New("msgpack data is too short to hold a time")
 )
 
 func SkipMultiple(data []byte, offset, num int) (int, error) {

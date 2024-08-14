@@ -124,9 +124,6 @@ func generate(w *bytes.Buffer, retType, name string) {
 	}
 	guaranteedLength := 1
 	switch retType {
-	case "float32", "float64":
-		guaranteedLength = 5
-		emitLengthCheck(w, retType, MsgpackType{}, fmt.Sprint(guaranteedLength), "internal.ErrShortInputForFloat")
 	case "time":
 		guaranteedLength = 6
 		emitLengthCheck(w, retType, MsgpackType{}, fmt.Sprint(guaranteedLength), "internal.ErrShortInputForTime")
@@ -163,7 +160,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 	if typeRestricted && retType != "time" {
 		fmt.Fprintf(w, "	switch data[0] {\n")
 		for _, t := range types {
-			if t.ByteEnd != 0 || (t.DataType != retType && !(strings.HasPrefix(t.DataType, "float") && strings.HasPrefix(retType, "float")) && !(retType == "string" && t.DataType == "[]byte")) {
+			if t.ByteEnd != 0 || (t.DataType != retType && !(isNumericType(t.DataType) && isNumericType(retType)) && !(retType == "string" && t.DataType == "[]byte")) {
 				continue
 			}
 			fmt.Fprintf(w, "	case 0x%02x:\n", t.Byte)
@@ -264,12 +261,8 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
 		}
 	default:
-		if retType == "float64" && t.DataType == "float32" {
-			fmt.Fprintf(w, "		return float64(%s), %s, nil\n", val, lencalc)
-			break
-		}
-		if retType == "float32" && t.DataType == "float64" {
-			fmt.Fprintf(w, "		return float32(%s), %s, nil\n", val, lencalc)
+		if retType != t.DataType && isNumericType(retType) && isNumericType(t.DataType) {
+			fmt.Fprintf(w, "		return %s(%s), %s, nil\n", retType, val, lencalc)
 			break
 		}
 		if retType == "string" && t.DataType == "[]byte" {
@@ -372,4 +365,13 @@ func lcfirst(s string) string {
 
 func ucfirst(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+func isNumericType(t string) bool {
+	switch t {
+	case "int", "float32", "float64":
+		return true
+	default:
+		return false
+	}
 }

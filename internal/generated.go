@@ -354,6 +354,16 @@ func DecodeInt(data []byte) (int, int, error) {
 		return int(int8(data[0])), 1, nil
 	}
 	switch data[0] {
+	case 0xca:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
+		return int(math.Float32frombits(binary.BigEndian.Uint32(data[1:5]))), 5, nil
+	case 0xcb:
+		if len(data) < 9 {
+			return 0, 0, ErrShortInput
+		}
+		return int(math.Float64frombits(binary.BigEndian.Uint64(data[1:9]))), 9, nil
 	case 0xcc:
 		if len(data) < 2 {
 			return 0, 0, ErrShortInput
@@ -463,22 +473,68 @@ func DecodeInt(data []byte) (int, int, error) {
 }
 
 func DecodeFloat32(data []byte) (float32, int, error) {
-	if len(data) < 5 {
-		return 0, 0, ErrShortInputForFloat
+	if len(data) < 1 {
+		return 0, 0, ErrShortInput
 	}
 	switch data[0] {
 	case 0xca:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
 		return math.Float32frombits(binary.BigEndian.Uint32(data[1:5])), 5, nil
 	case 0xcb:
 		if len(data) < 9 {
 			return 0, 0, ErrShortInput
 		}
 		return float32(math.Float64frombits(binary.BigEndian.Uint64(data[1:9]))), 9, nil
+	case 0xcc:
+		if len(data) < 2 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(data[1])), 2, nil
+	case 0xcd:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(binary.BigEndian.Uint16(data[1:3]))), 3, nil
+	case 0xce:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(binary.BigEndian.Uint32(data[1:5]))), 5, nil
+	case 0xcf:
+		if len(data) < 9 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(binary.BigEndian.Uint64(data[1:9]))), 9, nil
+	case 0xd0:
+		if len(data) < 2 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(int8(data[1]))), 2, nil
+	case 0xd1:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(int16(binary.BigEndian.Uint16(data[1:3])))), 3, nil
+	case 0xd2:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(int32(binary.BigEndian.Uint32(data[1:5])))), 5, nil
+	case 0xd3:
+		if len(data) < 9 {
+			return 0, 0, ErrShortInput
+		}
+		return float32(int(int64(binary.BigEndian.Uint64(data[1:9])))), 9, nil
 	}
 
 	// Try extension decoding in case of a length-prefixed entry (#17)
 	switch data[0] {
 	case 0xc7:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
 		s := int(data[1]) + 3
 		if len(data) < s {
 			return 0, 0, ErrShortInput
@@ -486,6 +542,9 @@ func DecodeFloat32(data []byte) (float32, int, error) {
 		ret, err := decodeFloat32_ext(data[3:s], int8(data[2]))
 		return ret, s, err
 	case 0xc8:
+		if len(data) < 4 {
+			return 0, 0, ErrShortInput
+		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
 		if len(data) < s {
 			return 0, 0, ErrShortInput
@@ -503,9 +562,15 @@ func DecodeFloat32(data []byte) (float32, int, error) {
 		ret, err := decodeFloat32_ext(data[6:s], int8(data[5]))
 		return ret, s, err
 	case 0xd4:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
 		ret, err := decodeFloat32_ext(data[2:3], int8(data[1]))
 		return ret, 3, err
 	case 0xd5:
+		if len(data) < 4 {
+			return 0, 0, ErrShortInput
+		}
 		ret, err := decodeFloat32_ext(data[2:4], int8(data[1]))
 		return ret, 4, err
 	case 0xd6:
@@ -531,22 +596,68 @@ func DecodeFloat32(data []byte) (float32, int, error) {
 }
 
 func DecodeFloat64(data []byte) (float64, int, error) {
-	if len(data) < 5 {
-		return 0, 0, ErrShortInputForFloat
+	if len(data) < 1 {
+		return 0, 0, ErrShortInput
 	}
 	switch data[0] {
 	case 0xca:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
 		return float64(math.Float32frombits(binary.BigEndian.Uint32(data[1:5]))), 5, nil
 	case 0xcb:
 		if len(data) < 9 {
 			return 0, 0, ErrShortInput
 		}
 		return math.Float64frombits(binary.BigEndian.Uint64(data[1:9])), 9, nil
+	case 0xcc:
+		if len(data) < 2 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(data[1])), 2, nil
+	case 0xcd:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(binary.BigEndian.Uint16(data[1:3]))), 3, nil
+	case 0xce:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(binary.BigEndian.Uint32(data[1:5]))), 5, nil
+	case 0xcf:
+		if len(data) < 9 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(binary.BigEndian.Uint64(data[1:9]))), 9, nil
+	case 0xd0:
+		if len(data) < 2 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(int8(data[1]))), 2, nil
+	case 0xd1:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(int16(binary.BigEndian.Uint16(data[1:3])))), 3, nil
+	case 0xd2:
+		if len(data) < 5 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(int32(binary.BigEndian.Uint32(data[1:5])))), 5, nil
+	case 0xd3:
+		if len(data) < 9 {
+			return 0, 0, ErrShortInput
+		}
+		return float64(int(int64(binary.BigEndian.Uint64(data[1:9])))), 9, nil
 	}
 
 	// Try extension decoding in case of a length-prefixed entry (#17)
 	switch data[0] {
 	case 0xc7:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
 		s := int(data[1]) + 3
 		if len(data) < s {
 			return 0, 0, ErrShortInput
@@ -554,6 +665,9 @@ func DecodeFloat64(data []byte) (float64, int, error) {
 		ret, err := decodeFloat64_ext(data[3:s], int8(data[2]))
 		return ret, s, err
 	case 0xc8:
+		if len(data) < 4 {
+			return 0, 0, ErrShortInput
+		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
 		if len(data) < s {
 			return 0, 0, ErrShortInput
@@ -571,9 +685,15 @@ func DecodeFloat64(data []byte) (float64, int, error) {
 		ret, err := decodeFloat64_ext(data[6:s], int8(data[5]))
 		return ret, s, err
 	case 0xd4:
+		if len(data) < 3 {
+			return 0, 0, ErrShortInput
+		}
 		ret, err := decodeFloat64_ext(data[2:3], int8(data[1]))
 		return ret, 3, err
 	case 0xd5:
+		if len(data) < 4 {
+			return 0, 0, ErrShortInput
+		}
 		ret, err := decodeFloat64_ext(data[2:4], int8(data[1]))
 		return ret, 4, err
 	case 0xd6:
