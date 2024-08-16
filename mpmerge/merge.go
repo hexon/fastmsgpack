@@ -3,6 +3,7 @@ package mpmerge
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/hexon/fastmsgpack"
 	"github.com/hexon/fastmsgpack/internal"
@@ -94,12 +95,9 @@ func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDi
 			return nil, err
 		}
 	}
-outer:
 	for k, sm := range m.Changes {
-		for _, ek := range keys {
-			if k == ek {
-				continue outer
-			}
+		if slices.Contains(keys, k) {
+			continue
 		}
 		if _, del := sm.(DeleteEntry); del {
 			continue
