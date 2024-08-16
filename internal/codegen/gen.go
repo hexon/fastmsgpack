@@ -264,12 +264,20 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 			fmt.Fprintf(w, "		return %s, c.append%s(%s)\n", lencalc, ucfirst(t.DataType), val)
 		}
 		return
+	case "void":
+		switch t.DataType {
+		case "array":
+			fmt.Fprintf(w, "		return internal.SkipMultiple(data, %s, %s)\n", lencalc, val)
+		case "map":
+			fmt.Fprintf(w, "		return internal.SkipMultiple(data, %s, 2*(%s))\n", lencalc, val)
+		default:
+			fmt.Fprintf(w, "		return %s, nil\n", lencalc)
+		}
+		return
 	}
 	switch t.DataType {
 	case "array":
 		switch retType {
-		case "void":
-			fmt.Fprintf(w, "			return internal.SkipMultiple(data, %s, %s)\n", lencalc, val)
 		case "any":
 			fmt.Fprintf(w, "			return %s_array(data, %s, %s, dict)\n", lcfirst(thisFunc), lencalc, val)
 		default:
@@ -277,8 +285,6 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		}
 	case "map":
 		switch retType {
-		case "void":
-			fmt.Fprintf(w, "			return internal.SkipMultiple(data, %s, 2*(%s))\n", lencalc, val)
 		case "any":
 			fmt.Fprintf(w, "			return %s_map(data, %s, %s, dict)\n", lcfirst(thisFunc), lencalc, val)
 		default:
@@ -286,8 +292,6 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		}
 	case "ext":
 		switch retType {
-		case "void":
-			fmt.Fprintf(w, "		return %s, nil\n", lencalc)
 		case "any", "string":
 			fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]), dict)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
 			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
@@ -307,8 +311,6 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 			break
 		}
 		switch retType {
-		case "void":
-			fmt.Fprintf(w, "		return %s, nil\n", lencalc)
 		case "any", t.DataType:
 			fmt.Fprintf(w, "		return %s, %s, nil\n", val, lencalc)
 		default:
