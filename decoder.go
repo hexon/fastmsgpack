@@ -234,6 +234,19 @@ func (d *Decoder) Skip() error {
 	return nil
 }
 
+// DecodeRaw decodes the next value enough to know its length and returns the msgpack data for it while skipping over it.
+func (d *Decoder) DecodeRaw() ([]byte, error) {
+	b := d.data[d.offset:]
+	c, err := internal.ValueLength(b)
+	if err != nil {
+		return nil, err
+	}
+	b = b[:c]
+	d.offset += c
+	d.consumedOne()
+	return b, nil
+}
+
 // Break out of the map or array we're currently in.
 // This can only be called before the last element of the array/map is read, because otherwise you'd break out one level higher.
 func (d *Decoder) Break() error {

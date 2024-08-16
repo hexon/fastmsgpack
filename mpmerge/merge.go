@@ -38,12 +38,11 @@ func Merge(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.
 }
 
 func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
-	data = data[internal.DecodeLengthPrefixExtension(data):]
-	elements, consume, ok := internal.DecodeMapLen(data)
-	if !ok {
-		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting a map", data[0])
+	dec := fastmsgpack.NewDecoder(data, fastmsgpack.WithDict(readDict))
+	elements, err := dec.DecodeMapLen()
+	if err != nil {
+		return nil, err
 	}
-	data = data[consume:]
 	newSize := len(m.Changes)
 	for _, sm := range m.Changes {
 		if _, ok := sm.(DeleteEntry); ok {
@@ -53,27 +52,20 @@ func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDi
 	keys := make([]string, elements)
 	values := make([][]byte, elements)
 	for i := 0; elements > i; i++ {
-		sz, err := fastmsgpack.Size(data)
+		k, err := dec.DecodeString()
 		if err != nil {
 			return nil, err
 		}
-		k, err := fastmsgpack.Decode(data[:sz], readDict)
-		if err != nil {
-			return nil, err
-		}
-		data = data[sz:]
-		keys[i] = k.(string)
-		if _, def := m.Changes[k.(string)]; !def {
+		keys[i] = k
+		if _, def := m.Changes[k]; !def {
 			newSize++
 		}
-		sz, err = fastmsgpack.Size(data)
+		values[i], err = dec.DecodeRaw()
 		if err != nil {
 			return nil, err
 		}
-		values[i] = data[:sz]
-		data = data[sz:]
 	}
-	dst, err := internal.AppendMapLen(dst, newSize)
+	dst, err = internal.AppendMapLen(dst, newSize)
 	if err != nil {
 		return nil, err
 	}
@@ -127,12 +119,11 @@ func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDi
 }
 
 func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
-	data = data[internal.DecodeLengthPrefixExtension(data):]
-	elements, consume, ok := internal.DecodeArrayLen(data)
-	if !ok {
-		return nil, fmt.Errorf("encountered msgpack byte %02x while expecting an array", data[0])
+	dec := fastmsgpack.NewDecoder(data, fastmsgpack.WithDict(readDict))
+	elements, err := dec.DecodeArrayLen()
+	if err != nil {
+		return nil, err
 	}
-	data = data[consume:]
 	newSize := len(m.Changes)
 	if elements > len(m.Changes) {
 		newSize += elements - len(m.Changes)
@@ -142,7 +133,7 @@ func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *
 			newSize--
 		}
 	}
-	dst, err := internal.AppendArrayLen(dst, newSize)
+	dst, err = internal.AppendArrayLen(dst, newSize)
 	if err != nil {
 		return nil, err
 	}
@@ -166,51 +157,54 @@ func (m Array) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *
 			}
 			continue
 		}
-		sz, err := fastmsgpack.Size(data)
+		v, err := dec.DecodeRaw()
 		if err != nil {
 			return nil, err
 		}
 		switch sm.(type) {
 		case nil:
-			dst = append(dst, data[:sz]...)
+			dst = append(dst, v...)
 		case DeleteEntry:
 		default:
-			dst, err = sm.descend(dst, data[:sz], o, readDict)
+			dst, err = sm.descend(dst, v, o, readDict)
 			if err != nil {
 				return nil, err
 			}
 		}
-		data = data[sz:]
 	}
 	for i := len(m.Changes); elements > i; i++ {
-		sz, err := fastmsgpack.Size(data)
+		v, err := dec.DecodeRaw()
 		if err != nil {
 			return nil, err
 		}
-		dst = append(dst, data[:sz]...)
-		data = data[sz:]
+		dst = append(dst, v...)
 	}
 	return dst, nil
 }
 
 func (m Each) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *fastmsgpack.Dict) ([]byte, error) {
-	data = data[internal.DecodeLengthPrefixExtension(data):]
-	elements, consume, isMap := internal.DecodeMapLen(data)
-	if !isMap {
-		var ok bool
-		elements, consume, ok = internal.DecodeArrayLen(data)
-		if !ok {
-			return nil, fmt.Errorf("encountered msgpack byte %02x while expecting a map or array", data[0])
-		}
+	dec := fastmsgpack.NewDecoder(data, fastmsgpack.WithDict(readDict))
+	var elements int
+	var isMap bool
+	var err error
+	switch t := dec.PeekType(); t {
+	case fastmsgpack.TypeMap:
+		isMap = true
+		elements, err = dec.DecodeMapLen()
+	case fastmsgpack.TypeArray:
+		elements, err = dec.DecodeArrayLen()
+	default:
+		return nil, fmt.Errorf("encountered msgpack type %q while expecting a map or array", t.String())
 	}
-	data = data[consume:]
+	if err != nil {
+		return nil, err
+	}
 	switch m.Change.(type) {
 	case nil:
 		return nil, errors.New("fastmsgpack/mpmerge: this Each merger has nil Merger")
 	case DeleteEntry:
 		elements = 0
 	}
-	var err error
 	if isMap {
 		dst, err = internal.AppendMapLen(dst, elements)
 	} else {
@@ -221,22 +215,20 @@ func (m Each) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDict *f
 	}
 	for i := 0; elements > i; i++ {
 		if isMap {
-			sz, err := fastmsgpack.Size(data)
+			v, err := dec.DecodeRaw()
 			if err != nil {
 				return nil, err
 			}
-			dst = append(dst, data[:sz]...)
-			data = data[sz:]
+			dst = append(dst, v...)
 		}
-		sz, err := fastmsgpack.Size(data)
+		v, err := dec.DecodeRaw()
 		if err != nil {
 			return nil, err
 		}
-		dst, err = m.Change.descend(dst, data[:sz], o, readDict)
+		dst, err = m.Change.descend(dst, v, o, readDict)
 		if err != nil {
 			return nil, err
 		}
-		data = data[sz:]
 	}
 	return dst, nil
 }
