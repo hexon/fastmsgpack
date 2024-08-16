@@ -1,10 +1,5 @@
 package fastmsgpack
 
-import (
-	"errors"
-	"fmt"
-)
-
 // MakeDict prepares a dictionary.
 func MakeDict(dict []string) *Dict {
 	ret := &Dict{
@@ -23,26 +18,4 @@ func MakeDict(dict []string) *Dict {
 type Dict struct {
 	Strings    []string
 	interfaces []any
-}
-
-func (d *Dict) lookupAny(n uint) (any, error) {
-	if d == nil {
-		return nil, errors.New("encountered interned string, but no dict was configured")
-	}
-	if n >= uint(len(d.interfaces)) {
-		n2 := n
-		return nil, fmt.Errorf("interned string %d is out of bounds for the dict (%d entries)", n2, len(d.interfaces))
-	}
-	return d.interfaces[n], nil
-}
-
-func (d *Dict) lookupString(n uint) (string, error) {
-	if d == nil {
-		return "", errors.New("encountered interned string, but no dict was configured")
-	}
-	if n >= uint(len(d.Strings)) {
-		n2 := n
-		return "", fmt.Errorf("interned string %d is out of bounds for the dict (%d entries)", n2, len(d.Strings))
-	}
-	return d.Strings[n], nil
 }

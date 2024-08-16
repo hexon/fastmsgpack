@@ -3,7 +3,6 @@ package fastmsgpack
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/hexon/fastmsgpack/internal"
@@ -13,7 +12,7 @@ import (
 // Any []byte and string in return values might point into memory from the given data. Don't modify the input data until you're done with the return value.
 type Decoder struct {
 	data     []byte
-	dict     *Dict
+	opt      internal.DecodeOptions
 	skipInfo []skipInfo
 	offset   int
 }
@@ -24,18 +23,31 @@ type skipInfo struct {
 }
 
 // NewDecoder initializes a new Decoder.
-// The dictionary is optional and can be nil.
-func NewDecoder(data []byte, dict *Dict) *Decoder {
-	return &Decoder{
+func NewDecoder(data []byte, opts ...DecodeOption) *Decoder {
+	d := &Decoder{
 		data:     data,
-		dict:     dict,
 		skipInfo: make([]skipInfo, 0, 8),
+	}
+	for _, o := range opts {
+		o(&d.opt)
+	}
+	return d
+}
+
+type DecodeOption func(*internal.DecodeOptions)
+
+func WithDict(dict *Dict) DecodeOption {
+	return func(opt *internal.DecodeOptions) {
+		opt.Dict = &internal.Dict{
+			Strings:    dict.Strings,
+			Interfaces: dict.interfaces,
+		}
 	}
 }
 
 // DecodeValue decodes the next value in the msgpack data. Return types are: nil, bool, int, float32, float64, string, []byte, time.Time, []any, map[string]any or Extension.
 func (d *Decoder) DecodeValue() (any, error) {
-	v, c, err := decodeValue(d.data[d.offset:], d.dict)
+	v, c, err := decodeValue(d.data[d.offset:], d.opt)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +57,7 @@ func (d *Decoder) DecodeValue() (any, error) {
 }
 
 func (d *Decoder) DecodeString() (string, error) {
-	v, c, err := decodeString(d.data[d.offset:], d.dict)
+	v, c, err := internal.DecodeString(d.data[d.offset:], d.opt)
 	if err != nil {
 		return "", err
 	}
@@ -55,7 +67,7 @@ func (d *Decoder) DecodeString() (string, error) {
 }
 
 func (d *Decoder) DecodeInt() (int, error) {
-	v, c, err := internal.DecodeInt(d.data[d.offset:])
+	v, c, err := internal.DecodeInt(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
@@ -65,7 +77,7 @@ func (d *Decoder) DecodeInt() (int, error) {
 }
 
 func (d *Decoder) DecodeFloat32() (float32, error) {
-	v, c, err := internal.DecodeFloat32(d.data[d.offset:])
+	v, c, err := internal.DecodeFloat32(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
@@ -75,7 +87,7 @@ func (d *Decoder) DecodeFloat32() (float32, error) {
 }
 
 func (d *Decoder) DecodeFloat64() (float64, error) {
-	v, c, err := internal.DecodeFloat64(d.data[d.offset:])
+	v, c, err := internal.DecodeFloat64(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
@@ -85,7 +97,7 @@ func (d *Decoder) DecodeFloat64() (float64, error) {
 }
 
 func (d *Decoder) DecodeBool() (bool, error) {
-	v, c, err := internal.DecodeBool(d.data[d.offset:])
+	v, c, err := internal.DecodeBool(d.data[d.offset:], d.opt)
 	if err != nil {
 		return false, err
 	}
@@ -95,7 +107,7 @@ func (d *Decoder) DecodeBool() (bool, error) {
 }
 
 func (d *Decoder) DecodeTime() (time.Time, error) {
-	v, c, err := internal.DecodeTime(d.data[d.offset:])
+	v, c, err := internal.DecodeTime(d.data[d.offset:], d.opt)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -261,10 +273,10 @@ func (d *Decoder) consumedOne() {
 	}
 }
 
-func decodeValue_array(data []byte, offset, num int, dict *Dict) ([]any, int, error) {
+func decodeValue_array(data []byte, offset, num int, opt internal.DecodeOptions) ([]any, int, error) {
 	ret := make([]any, num)
 	for i := range ret {
-		v, c, err := decodeValue(data[offset:], dict)
+		v, c, err := decodeValue(data[offset:], opt)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -274,15 +286,15 @@ func decodeValue_array(data []byte, offset, num int, dict *Dict) ([]any, int, er
 	return ret, offset, nil
 }
 
-func decodeValue_map(data []byte, offset, num int, dict *Dict) (map[string]any, int, error) {
+func decodeValue_map(data []byte, offset, num int, opt internal.DecodeOptions) (map[string]any, int, error) {
 	ret := make(map[string]any, num)
 	for num > 0 {
-		k, c, err := decodeString(data[offset:], dict)
+		k, c, err := internal.DecodeString(data[offset:], opt)
 		if err != nil {
 			return nil, 0, err
 		}
 		offset += c
-		v, c, err := decodeValue(data[offset:], dict)
+		v, c, err := decodeValue(data[offset:], opt)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -293,7 +305,7 @@ func decodeValue_map(data []byte, offset, num int, dict *Dict) (map[string]any, 
 	return ret, offset, nil
 }
 
-func decodeValue_ext(data []byte, extType int8, dict *Dict) (any, error) {
+func decodeValue_ext(data []byte, extType int8, opt internal.DecodeOptions) (any, error) {
 	switch extType {
 	case -1: // Timestamp
 		return internal.DecodeTimestamp(data)
@@ -303,32 +315,13 @@ func decodeValue_ext(data []byte, extType int8, dict *Dict) (any, error) {
 		if !ok {
 			return nil, errors.New("failed to decode index number of interned string")
 		}
-		return dict.lookupAny(n)
+		return opt.Dict.LookupAny(n)
 
 	case 17: // Length-prefixed entry
-		ret, _, err := decodeValue(data, dict)
+		ret, _, err := decodeValue(data, opt)
 		return ret, err
 
 	default:
 		return Extension{Type: extType, Data: data}, nil
-	}
-}
-
-func decodeString_ext(data []byte, extType int8, dict *Dict) (string, error) {
-	switch extType {
-	case -128: // Interned string
-		n, ok := internal.DecodeBytesToUint(data)
-		if !ok {
-			return "", errors.New("failed to decode index number of interned string")
-		}
-		return dict.lookupString(n)
-
-	case 17: // Length-prefixed entry
-		ret, _, err := decodeString(data, dict)
-		return ret, err
-
-	default:
-		extType := extType // Only let it escape in this (unlikely) branch.
-		return "", fmt.Errorf("unexpected extension %d while expecting string", extType)
 	}
 }

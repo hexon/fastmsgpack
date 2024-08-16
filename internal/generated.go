@@ -343,7 +343,141 @@ func DescribeValue(data []byte) string {
 	return "0xc1"
 }
 
-func DecodeInt(data []byte) (int, int, error) {
+func DecodeString(data []byte, opt DecodeOptions) (string, int, error) {
+	if len(data) < 1 {
+		return "", 0, ErrShortInput
+	}
+	if data[0]&0b11100000 == 0b10100000 {
+		s := int(data[0]&0b00011111) + 1
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[1:s]), s, nil
+	}
+	switch data[0] {
+	case 0xc4:
+		if len(data) < 2 {
+			return "", 0, ErrShortInput
+		}
+		s := int(data[1]) + 2
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[2:s]), s, nil
+	case 0xc5:
+		if len(data) < 3 {
+			return "", 0, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[3:s]), s, nil
+	case 0xc6:
+		if len(data) < 5 {
+			return "", 0, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[5:s]), s, nil
+	case 0xd9:
+		if len(data) < 2 {
+			return "", 0, ErrShortInput
+		}
+		s := int(data[1]) + 2
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[2:s]), s, nil
+	case 0xda:
+		if len(data) < 3 {
+			return "", 0, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[3:s]), s, nil
+	case 0xdb:
+		if len(data) < 5 {
+			return "", 0, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		return UnsafeStringCast(data[5:s]), s, nil
+	}
+
+	// Try extension decoding in case of a length-prefixed entry (#17)
+	switch data[0] {
+	case 0xc7:
+		if len(data) < 3 {
+			return "", 0, ErrShortInput
+		}
+		s := int(data[1]) + 3
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[3:s], int8(data[2]), opt)
+		return ret, s, err
+	case 0xc8:
+		if len(data) < 4 {
+			return "", 0, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[4:s], int8(data[3]), opt)
+		return ret, s, err
+	case 0xc9:
+		if len(data) < 6 {
+			return "", 0, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
+		if len(data) < s {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[6:s], int8(data[5]), opt)
+		return ret, s, err
+	case 0xd4:
+		if len(data) < 3 {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[2:3], int8(data[1]), opt)
+		return ret, 3, err
+	case 0xd5:
+		if len(data) < 4 {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[2:4], int8(data[1]), opt)
+		return ret, 4, err
+	case 0xd6:
+		if len(data) < 6 {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[2:6], int8(data[1]), opt)
+		return ret, 6, err
+	case 0xd7:
+		if len(data) < 10 {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[2:10], int8(data[1]), opt)
+		return ret, 10, err
+	case 0xd8:
+		if len(data) < 18 {
+			return "", 0, ErrShortInput
+		}
+		ret, err := decodeString_ext(data[2:18], int8(data[1]), opt)
+		return ret, 18, err
+	}
+	return "", 0, errors.New("unexpected " + DescribeValue(data) + " when expecting string")
+}
+
+func DecodeInt(data []byte, opt DecodeOptions) (int, int, error) {
 	if len(data) < 1 {
 		return 0, 0, ErrShortInput
 	}
@@ -416,7 +550,7 @@ func DecodeInt(data []byte) (int, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[3:s], int8(data[2]))
+		ret, err := decodeInt_ext(data[3:s], int8(data[2]), opt)
 		return ret, s, err
 	case 0xc8:
 		if len(data) < 4 {
@@ -426,7 +560,7 @@ func DecodeInt(data []byte) (int, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[4:s], int8(data[3]))
+		ret, err := decodeInt_ext(data[4:s], int8(data[3]), opt)
 		return ret, s, err
 	case 0xc9:
 		if len(data) < 6 {
@@ -436,43 +570,43 @@ func DecodeInt(data []byte) (int, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[6:s], int8(data[5]))
+		ret, err := decodeInt_ext(data[6:s], int8(data[5]), opt)
 		return ret, s, err
 	case 0xd4:
 		if len(data) < 3 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[2:3], int8(data[1]))
+		ret, err := decodeInt_ext(data[2:3], int8(data[1]), opt)
 		return ret, 3, err
 	case 0xd5:
 		if len(data) < 4 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[2:4], int8(data[1]))
+		ret, err := decodeInt_ext(data[2:4], int8(data[1]), opt)
 		return ret, 4, err
 	case 0xd6:
 		if len(data) < 6 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[2:6], int8(data[1]))
+		ret, err := decodeInt_ext(data[2:6], int8(data[1]), opt)
 		return ret, 6, err
 	case 0xd7:
 		if len(data) < 10 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[2:10], int8(data[1]))
+		ret, err := decodeInt_ext(data[2:10], int8(data[1]), opt)
 		return ret, 10, err
 	case 0xd8:
 		if len(data) < 18 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeInt_ext(data[2:18], int8(data[1]))
+		ret, err := decodeInt_ext(data[2:18], int8(data[1]), opt)
 		return ret, 18, err
 	}
 	return 0, 0, errors.New("unexpected " + DescribeValue(data) + " when expecting int")
 }
 
-func DecodeFloat32(data []byte) (float32, int, error) {
+func DecodeFloat32(data []byte, opt DecodeOptions) (float32, int, error) {
 	if len(data) < 1 {
 		return 0, 0, ErrShortInput
 	}
@@ -539,7 +673,7 @@ func DecodeFloat32(data []byte) (float32, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[3:s], int8(data[2]))
+		ret, err := decodeFloat32_ext(data[3:s], int8(data[2]), opt)
 		return ret, s, err
 	case 0xc8:
 		if len(data) < 4 {
@@ -549,7 +683,7 @@ func DecodeFloat32(data []byte) (float32, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[4:s], int8(data[3]))
+		ret, err := decodeFloat32_ext(data[4:s], int8(data[3]), opt)
 		return ret, s, err
 	case 0xc9:
 		if len(data) < 6 {
@@ -559,43 +693,43 @@ func DecodeFloat32(data []byte) (float32, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[6:s], int8(data[5]))
+		ret, err := decodeFloat32_ext(data[6:s], int8(data[5]), opt)
 		return ret, s, err
 	case 0xd4:
 		if len(data) < 3 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[2:3], int8(data[1]))
+		ret, err := decodeFloat32_ext(data[2:3], int8(data[1]), opt)
 		return ret, 3, err
 	case 0xd5:
 		if len(data) < 4 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[2:4], int8(data[1]))
+		ret, err := decodeFloat32_ext(data[2:4], int8(data[1]), opt)
 		return ret, 4, err
 	case 0xd6:
 		if len(data) < 6 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[2:6], int8(data[1]))
+		ret, err := decodeFloat32_ext(data[2:6], int8(data[1]), opt)
 		return ret, 6, err
 	case 0xd7:
 		if len(data) < 10 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[2:10], int8(data[1]))
+		ret, err := decodeFloat32_ext(data[2:10], int8(data[1]), opt)
 		return ret, 10, err
 	case 0xd8:
 		if len(data) < 18 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat32_ext(data[2:18], int8(data[1]))
+		ret, err := decodeFloat32_ext(data[2:18], int8(data[1]), opt)
 		return ret, 18, err
 	}
 	return 0, 0, errors.New("unexpected " + DescribeValue(data) + " when expecting float32")
 }
 
-func DecodeFloat64(data []byte) (float64, int, error) {
+func DecodeFloat64(data []byte, opt DecodeOptions) (float64, int, error) {
 	if len(data) < 1 {
 		return 0, 0, ErrShortInput
 	}
@@ -662,7 +796,7 @@ func DecodeFloat64(data []byte) (float64, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[3:s], int8(data[2]))
+		ret, err := decodeFloat64_ext(data[3:s], int8(data[2]), opt)
 		return ret, s, err
 	case 0xc8:
 		if len(data) < 4 {
@@ -672,7 +806,7 @@ func DecodeFloat64(data []byte) (float64, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[4:s], int8(data[3]))
+		ret, err := decodeFloat64_ext(data[4:s], int8(data[3]), opt)
 		return ret, s, err
 	case 0xc9:
 		if len(data) < 6 {
@@ -682,43 +816,43 @@ func DecodeFloat64(data []byte) (float64, int, error) {
 		if len(data) < s {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[6:s], int8(data[5]))
+		ret, err := decodeFloat64_ext(data[6:s], int8(data[5]), opt)
 		return ret, s, err
 	case 0xd4:
 		if len(data) < 3 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[2:3], int8(data[1]))
+		ret, err := decodeFloat64_ext(data[2:3], int8(data[1]), opt)
 		return ret, 3, err
 	case 0xd5:
 		if len(data) < 4 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[2:4], int8(data[1]))
+		ret, err := decodeFloat64_ext(data[2:4], int8(data[1]), opt)
 		return ret, 4, err
 	case 0xd6:
 		if len(data) < 6 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[2:6], int8(data[1]))
+		ret, err := decodeFloat64_ext(data[2:6], int8(data[1]), opt)
 		return ret, 6, err
 	case 0xd7:
 		if len(data) < 10 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[2:10], int8(data[1]))
+		ret, err := decodeFloat64_ext(data[2:10], int8(data[1]), opt)
 		return ret, 10, err
 	case 0xd8:
 		if len(data) < 18 {
 			return 0, 0, ErrShortInput
 		}
-		ret, err := decodeFloat64_ext(data[2:18], int8(data[1]))
+		ret, err := decodeFloat64_ext(data[2:18], int8(data[1]), opt)
 		return ret, 18, err
 	}
 	return 0, 0, errors.New("unexpected " + DescribeValue(data) + " when expecting float64")
 }
 
-func DecodeBool(data []byte) (bool, int, error) {
+func DecodeBool(data []byte, opt DecodeOptions) (bool, int, error) {
 	if len(data) < 1 {
 		return false, 0, ErrShortInput
 	}
@@ -739,7 +873,7 @@ func DecodeBool(data []byte) (bool, int, error) {
 		if len(data) < s {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[3:s], int8(data[2]))
+		ret, err := decodeBool_ext(data[3:s], int8(data[2]), opt)
 		return ret, s, err
 	case 0xc8:
 		if len(data) < 4 {
@@ -749,7 +883,7 @@ func DecodeBool(data []byte) (bool, int, error) {
 		if len(data) < s {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[4:s], int8(data[3]))
+		ret, err := decodeBool_ext(data[4:s], int8(data[3]), opt)
 		return ret, s, err
 	case 0xc9:
 		if len(data) < 6 {
@@ -759,43 +893,43 @@ func DecodeBool(data []byte) (bool, int, error) {
 		if len(data) < s {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[6:s], int8(data[5]))
+		ret, err := decodeBool_ext(data[6:s], int8(data[5]), opt)
 		return ret, s, err
 	case 0xd4:
 		if len(data) < 3 {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[2:3], int8(data[1]))
+		ret, err := decodeBool_ext(data[2:3], int8(data[1]), opt)
 		return ret, 3, err
 	case 0xd5:
 		if len(data) < 4 {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[2:4], int8(data[1]))
+		ret, err := decodeBool_ext(data[2:4], int8(data[1]), opt)
 		return ret, 4, err
 	case 0xd6:
 		if len(data) < 6 {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[2:6], int8(data[1]))
+		ret, err := decodeBool_ext(data[2:6], int8(data[1]), opt)
 		return ret, 6, err
 	case 0xd7:
 		if len(data) < 10 {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[2:10], int8(data[1]))
+		ret, err := decodeBool_ext(data[2:10], int8(data[1]), opt)
 		return ret, 10, err
 	case 0xd8:
 		if len(data) < 18 {
 			return false, 0, ErrShortInput
 		}
-		ret, err := decodeBool_ext(data[2:18], int8(data[1]))
+		ret, err := decodeBool_ext(data[2:18], int8(data[1]), opt)
 		return ret, 18, err
 	}
 	return false, 0, errors.New("unexpected " + DescribeValue(data) + " when expecting bool")
 }
 
-func DecodeTime(data []byte) (time.Time, int, error) {
+func DecodeTime(data []byte, opt DecodeOptions) (time.Time, int, error) {
 	if len(data) < 6 {
 		return time.Time{}, 0, ErrShortInputForTime
 	}
@@ -805,42 +939,42 @@ func DecodeTime(data []byte) (time.Time, int, error) {
 		if len(data) < s {
 			return time.Time{}, 0, ErrShortInput
 		}
-		ret, err := decodeTime_ext(data[3:s], int8(data[2]))
+		ret, err := decodeTime_ext(data[3:s], int8(data[2]), opt)
 		return ret, s, err
 	case 0xc8:
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
 		if len(data) < s {
 			return time.Time{}, 0, ErrShortInput
 		}
-		ret, err := decodeTime_ext(data[4:s], int8(data[3]))
+		ret, err := decodeTime_ext(data[4:s], int8(data[3]), opt)
 		return ret, s, err
 	case 0xc9:
 		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
 		if len(data) < s {
 			return time.Time{}, 0, ErrShortInput
 		}
-		ret, err := decodeTime_ext(data[6:s], int8(data[5]))
+		ret, err := decodeTime_ext(data[6:s], int8(data[5]), opt)
 		return ret, s, err
 	case 0xd4:
-		ret, err := decodeTime_ext(data[2:3], int8(data[1]))
+		ret, err := decodeTime_ext(data[2:3], int8(data[1]), opt)
 		return ret, 3, err
 	case 0xd5:
-		ret, err := decodeTime_ext(data[2:4], int8(data[1]))
+		ret, err := decodeTime_ext(data[2:4], int8(data[1]), opt)
 		return ret, 4, err
 	case 0xd6:
-		ret, err := decodeTime_ext(data[2:6], int8(data[1]))
+		ret, err := decodeTime_ext(data[2:6], int8(data[1]), opt)
 		return ret, 6, err
 	case 0xd7:
 		if len(data) < 10 {
 			return time.Time{}, 0, ErrShortInput
 		}
-		ret, err := decodeTime_ext(data[2:10], int8(data[1]))
+		ret, err := decodeTime_ext(data[2:10], int8(data[1]), opt)
 		return ret, 10, err
 	case 0xd8:
 		if len(data) < 18 {
 			return time.Time{}, 0, ErrShortInput
 		}
-		ret, err := decodeTime_ext(data[2:18], int8(data[1]))
+		ret, err := decodeTime_ext(data[2:18], int8(data[1]), opt)
 		return ret, 18, err
 	}
 	return time.Time{}, 0, errors.New("unexpected " + DescribeValue(data) + " when expecting time")

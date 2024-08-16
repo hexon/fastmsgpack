@@ -10,7 +10,7 @@ import (
 	"github.com/hexon/fastmsgpack/internal"
 )
 
-func decodeValue(data []byte, dict *Dict) (any, int, error) {
+func decodeValue(data []byte, opt internal.DecodeOptions) (any, int, error) {
 	if len(data) < 1 {
 		return nil, 0, internal.ErrShortInput
 	}
@@ -19,10 +19,10 @@ func decodeValue(data []byte, dict *Dict) (any, int, error) {
 			return int(data[0]), 1, nil
 		}
 		if data[0] <= 0x8f {
-			return decodeValue_map(data, 1, int(data[0]&0b00001111), dict)
+			return decodeValue_map(data, 1, int(data[0]&0b00001111), opt)
 		}
 		if data[0] <= 0x9f {
-			return decodeValue_array(data, 1, int(data[0]&0b00001111), dict)
+			return decodeValue_array(data, 1, int(data[0]&0b00001111), opt)
 		}
 		s := int(data[0]&0b00011111) + 1
 		if len(data) < s {
@@ -75,7 +75,7 @@ func decodeValue(data []byte, dict *Dict) (any, int, error) {
 		if len(data) < s {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[3:s], int8(data[2]), dict)
+		ret, err := decodeValue_ext(data[3:s], int8(data[2]), opt)
 		return ret, s, err
 	case 0xc8:
 		if len(data) < 4 {
@@ -85,7 +85,7 @@ func decodeValue(data []byte, dict *Dict) (any, int, error) {
 		if len(data) < s {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[4:s], int8(data[3]), dict)
+		ret, err := decodeValue_ext(data[4:s], int8(data[3]), opt)
 		return ret, s, err
 	case 0xc9:
 		if len(data) < 6 {
@@ -95,7 +95,7 @@ func decodeValue(data []byte, dict *Dict) (any, int, error) {
 		if len(data) < s {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[6:s], int8(data[5]), dict)
+		ret, err := decodeValue_ext(data[6:s], int8(data[5]), opt)
 		return ret, s, err
 	case 0xca:
 		if len(data) < 5 {
@@ -151,31 +151,31 @@ func decodeValue(data []byte, dict *Dict) (any, int, error) {
 		if len(data) < 3 {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[2:3], int8(data[1]), dict)
+		ret, err := decodeValue_ext(data[2:3], int8(data[1]), opt)
 		return ret, 3, err
 	case 0xd5:
 		if len(data) < 4 {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[2:4], int8(data[1]), dict)
+		ret, err := decodeValue_ext(data[2:4], int8(data[1]), opt)
 		return ret, 4, err
 	case 0xd6:
 		if len(data) < 6 {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[2:6], int8(data[1]), dict)
+		ret, err := decodeValue_ext(data[2:6], int8(data[1]), opt)
 		return ret, 6, err
 	case 0xd7:
 		if len(data) < 10 {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[2:10], int8(data[1]), dict)
+		ret, err := decodeValue_ext(data[2:10], int8(data[1]), opt)
 		return ret, 10, err
 	case 0xd8:
 		if len(data) < 18 {
 			return nil, 0, internal.ErrShortInput
 		}
-		ret, err := decodeValue_ext(data[2:18], int8(data[1]), dict)
+		ret, err := decodeValue_ext(data[2:18], int8(data[1]), opt)
 		return ret, 18, err
 	case 0xd9:
 		if len(data) < 2 {
@@ -208,158 +208,24 @@ func decodeValue(data []byte, dict *Dict) (any, int, error) {
 		if len(data) < 3 {
 			return nil, 0, internal.ErrShortInput
 		}
-		return decodeValue_array(data, 3, int(binary.BigEndian.Uint16(data[1:3])), dict)
+		return decodeValue_array(data, 3, int(binary.BigEndian.Uint16(data[1:3])), opt)
 	case 0xdd:
 		if len(data) < 5 {
 			return nil, 0, internal.ErrShortInput
 		}
-		return decodeValue_array(data, 5, int(binary.BigEndian.Uint32(data[1:5])), dict)
+		return decodeValue_array(data, 5, int(binary.BigEndian.Uint32(data[1:5])), opt)
 	case 0xde:
 		if len(data) < 3 {
 			return nil, 0, internal.ErrShortInput
 		}
-		return decodeValue_map(data, 3, int(binary.BigEndian.Uint16(data[1:3])), dict)
+		return decodeValue_map(data, 3, int(binary.BigEndian.Uint16(data[1:3])), opt)
 	case 0xdf:
 		if len(data) < 5 {
 			return nil, 0, internal.ErrShortInput
 		}
-		return decodeValue_map(data, 5, int(binary.BigEndian.Uint32(data[1:5])), dict)
+		return decodeValue_map(data, 5, int(binary.BigEndian.Uint32(data[1:5])), opt)
 	}
 	return nil, 0, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting any")
-}
-
-func decodeString(data []byte, dict *Dict) (string, int, error) {
-	if len(data) < 1 {
-		return "", 0, internal.ErrShortInput
-	}
-	if data[0]&0b11100000 == 0b10100000 {
-		s := int(data[0]&0b00011111) + 1
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[1:s]), s, nil
-	}
-	switch data[0] {
-	case 0xc4:
-		if len(data) < 2 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(data[1]) + 2
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[2:s]), s, nil
-	case 0xc5:
-		if len(data) < 3 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[3:s]), s, nil
-	case 0xc6:
-		if len(data) < 5 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[5:s]), s, nil
-	case 0xd9:
-		if len(data) < 2 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(data[1]) + 2
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[2:s]), s, nil
-	case 0xda:
-		if len(data) < 3 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[3:s]), s, nil
-	case 0xdb:
-		if len(data) < 5 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		return internal.UnsafeStringCast(data[5:s]), s, nil
-	}
-
-	// Try extension decoding in case of a length-prefixed entry (#17)
-	switch data[0] {
-	case 0xc7:
-		if len(data) < 3 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(data[1]) + 3
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[3:s], int8(data[2]), dict)
-		return ret, s, err
-	case 0xc8:
-		if len(data) < 4 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[4:s], int8(data[3]), dict)
-		return ret, s, err
-	case 0xc9:
-		if len(data) < 6 {
-			return "", 0, internal.ErrShortInput
-		}
-		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
-		if len(data) < s {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[6:s], int8(data[5]), dict)
-		return ret, s, err
-	case 0xd4:
-		if len(data) < 3 {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[2:3], int8(data[1]), dict)
-		return ret, 3, err
-	case 0xd5:
-		if len(data) < 4 {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[2:4], int8(data[1]), dict)
-		return ret, 4, err
-	case 0xd6:
-		if len(data) < 6 {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[2:6], int8(data[1]), dict)
-		return ret, 6, err
-	case 0xd7:
-		if len(data) < 10 {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[2:10], int8(data[1]), dict)
-		return ret, 10, err
-	case 0xd8:
-		if len(data) < 18 {
-			return "", 0, internal.ErrShortInput
-		}
-		ret, err := decodeString_ext(data[2:18], int8(data[1]), dict)
-		return ret, 18, err
-	}
-	return "", 0, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting string")
 }
 
 func DecodeType(data []byte) ValueType {

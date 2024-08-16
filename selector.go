@@ -10,7 +10,7 @@ import (
 // The result is appended to dst and returned. dst can be nil.
 func (r *Resolver) Select(dst, data []byte) (_ []byte, retErr error) {
 	sc := selectCall{
-		decoder:  NewDecoder(data, r.dict),
+		decoder:  NewDecoder(data, r.decodeOptions...),
 		selected: dst,
 	}
 	if err := sc.selectFromMap(r.interests, false); err != nil {

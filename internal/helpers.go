@@ -12,6 +12,10 @@ var (
 	ErrShortInputForTime = errors.New("msgpack data is too short to hold a time")
 )
 
+type DecodeOptions struct {
+	Dict            *Dict
+}
+
 func SkipMultiple(data []byte, offset, num int) (int, error) {
 	for num > 0 {
 		if len(data) < offset {
@@ -27,10 +31,29 @@ func SkipMultiple(data []byte, offset, num int) (int, error) {
 	return offset, nil
 }
 
-func decodeInt_ext(data []byte, extType int8) (int, error) {
+func decodeString_ext(data []byte, extType int8, opt DecodeOptions) (string, error) {
+	switch extType {
+	case -128: // Interned string
+		n, ok := DecodeBytesToUint(data)
+		if !ok {
+			return "", errors.New("failed to decode index number of interned string")
+		}
+		return opt.Dict.LookupString(n)
+
+	case 17: // Length-prefixed entry
+		ret, _, err := DecodeString(data, opt)
+		return ret, err
+
+	default:
+		extType := extType // Only let it escape in this (unlikely) branch.
+		return "", fmt.Errorf("unexpected extension %d while expecting string", extType)
+	}
+}
+
+func decodeInt_ext(data []byte, extType int8, opt DecodeOptions) (int, error) {
 	switch extType {
 	case 17: // Length-prefixed entry
-		ret, _, err := DecodeInt(data)
+		ret, _, err := DecodeInt(data, opt)
 		return ret, err
 
 	default:
@@ -39,10 +62,10 @@ func decodeInt_ext(data []byte, extType int8) (int, error) {
 	}
 }
 
-func decodeFloat32_ext(data []byte, extType int8) (float32, error) {
+func decodeFloat32_ext(data []byte, extType int8, opt DecodeOptions) (float32, error) {
 	switch extType {
 	case 17: // Length-prefixed entry
-		ret, _, err := DecodeFloat32(data)
+		ret, _, err := DecodeFloat32(data, opt)
 		return ret, err
 
 	default:
@@ -51,10 +74,10 @@ func decodeFloat32_ext(data []byte, extType int8) (float32, error) {
 	}
 }
 
-func decodeFloat64_ext(data []byte, extType int8) (float64, error) {
+func decodeFloat64_ext(data []byte, extType int8, opt DecodeOptions) (float64, error) {
 	switch extType {
 	case 17: // Length-prefixed entry
-		ret, _, err := DecodeFloat64(data)
+		ret, _, err := DecodeFloat64(data, opt)
 		return ret, err
 
 	default:
@@ -63,10 +86,10 @@ func decodeFloat64_ext(data []byte, extType int8) (float64, error) {
 	}
 }
 
-func decodeBool_ext(data []byte, extType int8) (bool, error) {
+func decodeBool_ext(data []byte, extType int8, opt DecodeOptions) (bool, error) {
 	switch extType {
 	case 17: // Length-prefixed entry
-		ret, _, err := DecodeBool(data)
+		ret, _, err := DecodeBool(data, opt)
 		return ret, err
 
 	default:
@@ -90,13 +113,13 @@ func DecodeTimestamp(data []byte) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("failed to decode timestamp of %d bytes", len(data))
 }
 
-func decodeTime_ext(data []byte, extType int8) (time.Time, error) {
+func decodeTime_ext(data []byte, extType int8, opt DecodeOptions) (time.Time, error) {
 	switch extType {
 	case -1: // Timestamp
 		return DecodeTimestamp(data)
 
 	case 17: // Length-prefixed entry
-		ret, _, err := DecodeTime(data)
+		ret, _, err := DecodeTime(data, opt)
 		return ret, err
 
 	default:

@@ -12,7 +12,7 @@ func Size(data []byte) (int, error) {
 // SplitArray splits a msgpack array into the msgpack chunks of its components.
 // The returned slices point into the given data.
 func SplitArray(data []byte) ([][]byte, error) {
-	d := NewDecoder(data, nil)
+	d := NewDecoder(data)
 	elements, err := d.DecodeArrayLen()
 	if err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func SplitArray(data []byte) ([][]byte, error) {
 // SplitMap splits a msgpack map into string-keys and the msgpack-values. It does not decode the values.
 // The returned slices point into the given data.
 func SplitMap(data []byte, dict *Dict) ([]string, [][]byte, error) {
-	d := NewDecoder(data, nil)
+	d := NewDecoder(data)
 	elements, err := d.DecodeArrayLen()
 	if err != nil {
 		return nil, nil, err

@@ -4,22 +4,28 @@ package fastmsgpack
 import (
 	"errors"
 	"strings"
+
+	"github.com/hexon/fastmsgpack/internal"
 )
 
 // Decode the given data (with the optional given dictionary).
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
 // The dictionary is optional and can be nil.
-func Decode(data []byte, dict *Dict) (any, error) {
-	v, _, err := decodeValue(data, dict)
+func Decode(data []byte, opts ...DecodeOption) (any, error) {
+	var opt internal.DecodeOptions
+	for _, o := range opts {
+		o(&opt)
+	}
+	v, _, err := decodeValue(data, opt)
 	return v, err
 }
 
 // NewResolver prepares a new resolver. It can be reused for multiple Resolve calls.
 // You can't query the same field twice. You can't even query a child of something else you request (e.g. both "person.properties" and "person.properties.age"). This is the only reason NewResolver might return an error.
 // The dictionary is optional and can be nil.
-func NewResolver(fields []string, dict *Dict) (*Resolver, error) {
+func NewResolver(fields []string, opts ...DecodeOption) (*Resolver, error) {
 	interests := map[string]any{}
-	r := &Resolver{interests, dict, len(fields)}
+	r := &Resolver{interests, opts, len(fields)}
 	for n, f := range fields {
 		if err := r.addField(f, n); err != nil {
 			return nil, err
@@ -35,9 +41,9 @@ type subresolver struct {
 }
 
 type Resolver struct {
-	interests map[string]any
-	dict      *Dict
-	numFields int
+	interests     map[string]any
+	decodeOptions []DecodeOption
+	numFields     int
 }
 
 // AddArrayResolver allows resolving inside array fields. For example like this pseudocode: `r.AddArrayResolve("person.addresses", NewResolver(["street"]))`.
@@ -126,7 +132,7 @@ func recurseInterests(fields []string, subs map[string]SubresolverDescription, i
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
 func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
 	rc := resolveCall{
-		decoder: NewDecoder(data, r.dict),
+		decoder: NewDecoder(data, r.decodeOptions...),
 		result:  make([]any, r.numFields),
 	}
 	if err := rc.recurseMap(r.interests, false); err != nil {

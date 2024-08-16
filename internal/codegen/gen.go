@@ -34,6 +34,7 @@ func main() {
 		fmt.Fprintf(&buf, ")\n")
 		generate(&buf, "void", "ValueLength")
 		generate(&buf, "_desc", "DescribeValue")
+		generate(&buf, "string", "DecodeString")
 		generate(&buf, "int", "DecodeInt")
 		generate(&buf, "float32", "DecodeFloat32")
 		generate(&buf, "float64", "DecodeFloat64")
@@ -64,7 +65,6 @@ func main() {
 		fmt.Fprintf(&buf, "	%q\n", "github.com/hexon/fastmsgpack/internal")
 		fmt.Fprintf(&buf, ")\n")
 		generate(&buf, "any", "decodeValue")
-		generate(&buf, "string", "decodeString")
 		generate(&buf, "type", "DecodeType")
 
 		formatted, err := format.Source(buf.Bytes())
@@ -110,19 +110,16 @@ func generate(w *bytes.Buffer, retType, name string) {
 	case "json":
 		fmt.Fprintf(w, "func (c *converter) %s(data []byte) (int, error) {\n", name)
 	case "any":
-		fmt.Fprintf(w, "func %s(data []byte, dict *Dict) (any, int, error) {\n", name)
+		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (any, int, error) {\n", name)
 	case "_desc":
 		fmt.Fprintf(w, "func %s(data []byte) string {\n", name)
 	case "type":
 		fmt.Fprintf(w, "func %s(data []byte) ValueType {\n", name)
 	case "time":
-		fmt.Fprintf(w, "func %s(data []byte) (time.Time, int, error) {\n", name)
-		typeRestricted = true
-	case "string":
-		fmt.Fprintf(w, "func %s(data []byte, dict *Dict) (%s, int, error) {\n", name, retType)
+		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (time.Time, int, error) {\n", name)
 		typeRestricted = true
 	default:
-		fmt.Fprintf(w, "func %s(data []byte) (%s, int, error) {\n", name, retType)
+		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (%s, int, error) {\n", name, retType)
 		typeRestricted = true
 	}
 	guaranteedLength := 1
@@ -282,26 +279,20 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 	case "array":
 		switch retType {
 		case "any":
-			fmt.Fprintf(w, "			return %s_array(data, %s, %s, dict)\n", lcfirst(thisFunc), lencalc, val)
+			fmt.Fprintf(w, "			return %s_array(data, %s, %s, opt)\n", lcfirst(thisFunc), lencalc, val)
 		default:
 			fmt.Fprintf(w, "			return %s, 0, errors.New(%q)\n", produceZero(retType), "unexpected array when expecting "+retType)
 		}
 	case "map":
 		switch retType {
 		case "any":
-			fmt.Fprintf(w, "			return %s_map(data, %s, %s, dict)\n", lcfirst(thisFunc), lencalc, val)
+			fmt.Fprintf(w, "			return %s_map(data, %s, %s, opt)\n", lcfirst(thisFunc), lencalc, val)
 		default:
 			fmt.Fprintf(w, "			return %s, 0, errors.New(%q)\n", produceZero(retType), "unexpected map when expecting "+retType)
 		}
 	case "ext":
-		switch retType {
-		case "any", "string":
-			fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]), dict)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
-			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
-		default:
-			fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]))\n", lcfirst(thisFunc), val, t.ExtTypeAt)
-			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
-		}
+		fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]), opt)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
+		fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
 	default:
 		if retType != t.DataType && isNumericType(retType) && isNumericType(t.DataType) {
 			fmt.Fprintf(w, "		return %s(%s), %s, nil\n", retType, val, lencalc)
