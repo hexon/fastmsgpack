@@ -240,14 +240,36 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 			fmt.Fprintf(w, "		return %q\n", t.Name)
 		}
 		return
+	case "json":
+		switch t.DataType {
+		case "array":
+			fmt.Fprintf(w, "		return c.%s_array(data, %s, %s)\n", lcfirst(thisFunc), lencalc, val)
+		case "map":
+			fmt.Fprintf(w, "		return c.%s_map(data, %s, %s)\n", lcfirst(thisFunc), lencalc, val)
+		case "ext":
+			fmt.Fprintf(w, "		return %s, c.%s_ext(%s, int8(data[%d]))\n", lencalc, lcfirst(thisFunc), val, t.ExtTypeAt)
+		case "[]byte":
+			fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, val)
+		case "string":
+			fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, regexp.MustCompile(`^internal\.UnsafeStringCast\((.+)\)$`).ReplaceAllString(val, "$1"))
+		case "nil":
+			fmt.Fprintf(w, "		return %s, c.appendRaw(%q)\n", lencalc, "null")
+		case "bool":
+			fmt.Fprintf(w, "		return %s, c.appendRaw(%q)\n", lencalc, val)
+		case "float64":
+			fmt.Fprintf(w, "		return %s, c.appendFloat(%s)\n", lencalc, val)
+		case "float32":
+			fmt.Fprintf(w, "		return %s, c.appendFloat(float64(%s))\n", lencalc, val)
+		default:
+			fmt.Fprintf(w, "		return %s, c.append%s(%s)\n", lencalc, ucfirst(t.DataType), val)
+		}
+		return
 	}
 	switch t.DataType {
 	case "array":
 		switch retType {
 		case "void":
 			fmt.Fprintf(w, "			return internal.SkipMultiple(data, %s, %s)\n", lencalc, val)
-		case "json":
-			fmt.Fprintf(w, "			return c.%s_array(data, %s, %s)\n", lcfirst(thisFunc), lencalc, val)
 		case "any":
 			fmt.Fprintf(w, "			return %s_array(data, %s, %s, dict)\n", lcfirst(thisFunc), lencalc, val)
 		default:
@@ -257,8 +279,6 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		switch retType {
 		case "void":
 			fmt.Fprintf(w, "			return internal.SkipMultiple(data, %s, 2*(%s))\n", lencalc, val)
-		case "json":
-			fmt.Fprintf(w, "			return c.%s_map(data, %s, %s)\n", lcfirst(thisFunc), lencalc, val)
 		case "any":
 			fmt.Fprintf(w, "			return %s_map(data, %s, %s, dict)\n", lcfirst(thisFunc), lencalc, val)
 		default:
@@ -268,8 +288,6 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		switch retType {
 		case "void":
 			fmt.Fprintf(w, "		return %s, nil\n", lencalc)
-		case "json":
-			fmt.Fprintf(w, "		return %s, c.%s_ext(%s, int8(data[%d]))\n", lencalc, lcfirst(thisFunc), val, t.ExtTypeAt)
 		case "any", "string":
 			fmt.Fprintf(w, "		ret, err := %s_ext(%s, int8(data[%d]), dict)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
 			fmt.Fprintf(w, "		return ret, %s, err\n", lencalc)
@@ -291,23 +309,6 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		switch retType {
 		case "void":
 			fmt.Fprintf(w, "		return %s, nil\n", lencalc)
-		case "json":
-			switch t.DataType {
-			case "[]byte":
-				fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, val)
-			case "string":
-				fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, regexp.MustCompile(`^internal\.UnsafeStringCast\((.+)\)$`).ReplaceAllString(val, "$1"))
-			case "nil":
-				fmt.Fprintf(w, "		return %s, c.appendRaw(%q)\n", lencalc, "null")
-			case "bool":
-				fmt.Fprintf(w, "		return %s, c.appendRaw(%q)\n", lencalc, val)
-			case "float64":
-				fmt.Fprintf(w, "		return %s, c.appendFloat(%s)\n", lencalc, val)
-			case "float32":
-				fmt.Fprintf(w, "		return %s, c.appendFloat(float64(%s))\n", lencalc, val)
-			default:
-				fmt.Fprintf(w, "		return %s, c.append%s(%s)\n", lencalc, ucfirst(t.DataType), val)
-			}
 		case "any", t.DataType:
 			fmt.Fprintf(w, "		return %s, %s, nil\n", val, lencalc)
 		default:
