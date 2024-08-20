@@ -98,12 +98,12 @@ func (c *converter) convertValue(data []byte) (int, error) {
 		if len(data) < 5 {
 			return 0, internal.ErrShortInput
 		}
-		return 5, c.appendFloat(float64(math.Float32frombits(binary.BigEndian.Uint32(data[1:5]))))
+		return 5, c.appendFloat32(math.Float32frombits(binary.BigEndian.Uint32(data[1:5])))
 	case 0xcb:
 		if len(data) < 9 {
 			return 0, internal.ErrShortInput
 		}
-		return 9, c.appendFloat(math.Float64frombits(binary.BigEndian.Uint64(data[1:9])))
+		return 9, c.appendFloat64(math.Float64frombits(binary.BigEndian.Uint64(data[1:9])))
 	case 0xcc:
 		if len(data) < 2 {
 			return 0, internal.ErrShortInput

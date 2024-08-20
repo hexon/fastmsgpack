@@ -320,8 +320,12 @@ func (c *converter) appendInt(i int) error {
 	return c.write(strconv.AppendInt(c.availableBuffer(), int64(i), 10))
 }
 
-func (c *converter) appendFloat(f float64) error {
-	return c.write(strconv.AppendFloat(c.availableBuffer(), f, 'f', -1, 32))
+func (c *converter) appendFloat32(f float32) error {
+	return c.write(strconv.AppendFloat(c.availableBuffer(), float64(f), 'f', -1, 32))
+}
+
+func (c *converter) appendFloat64(f float64) error {
+	return c.write(strconv.AppendFloat(c.availableBuffer(), f, 'f', -1, 64))
 }
 
 func (c *converter) convertValue_ext(data []byte, extType int8) error {
