@@ -9,6 +9,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/Jille/genericz"
 )
 
 var (
@@ -335,7 +337,7 @@ func getDecoder(t MsgpackType) (int, string, string, string) {
 	if t.ExtTypeAt > 0 {
 		extraLen = 1
 	}
-	minLen := max(1, t.ExtTypeAt+extraLen, t.DataStart+t.DataLen, t.DynamicLengthStart+t.DynamicLengthLen+extraLen)
+	minLen := genericz.Max(1, t.ExtTypeAt+extraLen, t.DataStart+t.DataLen, t.DynamicLengthStart+t.DynamicLengthLen+extraLen)
 	var preamble, sel, lencalc string
 	if t.DataLen == 1 && strings.Contains(t.DataCast, "$[0]") {
 		return minLen, "", strings.ReplaceAll(t.DataCast, "$[0]", fmt.Sprintf("data[%d]", t.DataStart)), fmt.Sprint(1 + t.DataStart + extraLen)
