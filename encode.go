@@ -166,29 +166,7 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 		}
 		return append(dst, 0xd7, 255, byte(val>>56), byte(val>>48), byte(val>>40), byte(val>>32), byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
 	case Extension:
-		switch len(v.Data) {
-		case 1:
-			return append(dst, 0xd4, byte(v.Type), v.Data[0]), nil
-		case 2:
-			return append(dst, 0xd5, byte(v.Type), v.Data[0], v.Data[1]), nil
-		case 4:
-			return append(dst, 0xd6, byte(v.Type), v.Data[0], v.Data[1], v.Data[2], v.Data[3]), nil
-		case 8:
-			dst = append(dst, 0xd7, byte(v.Type))
-		case 16:
-			dst = append(dst, 0xd8, byte(v.Type))
-		default:
-			if len(v.Data) <= math.MaxUint8 {
-				dst = append(dst, 0xc7, byte(len(v.Data)), byte(v.Type))
-			} else if len(v.Data) <= math.MaxUint16 {
-				dst = append(dst, 0xc8, byte(len(v.Data)>>8), byte(len(v.Data)), byte(v.Type))
-			} else if len(v.Data) <= math.MaxUint32 {
-				dst = append(dst, 0xc9, byte(len(v.Data)>>24), byte(len(v.Data)>>16), byte(len(v.Data)>>8), byte(len(v.Data)), byte(v.Type))
-			} else {
-				return nil, fmt.Errorf("fastmsgpack.Encode: extension data too long to encode (len %d)", len(v.Data))
-			}
-		}
-		return append(dst, v.Data...), nil
+		return v.AppendMsgpack(dst)
 
 	default:
 		rv := reflect.ValueOf(v)
