@@ -3,11 +3,13 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 )
 
 type Dict struct {
-	Strings    []string
-	Interfaces []any
+	Strings     []string
+	Interfaces  []any
+	JSONEncoded *atomic.Pointer[[][]byte]
 }
 
 func (d *Dict) LookupAny(n uint) (any, error) {

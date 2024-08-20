@@ -39,8 +39,9 @@ type DecodeOption func(*internal.DecodeOptions)
 func WithDict(dict *Dict) DecodeOption {
 	return func(opt *internal.DecodeOptions) {
 		opt.Dict = &internal.Dict{
-			Strings:    dict.Strings,
-			Interfaces: dict.interfaces,
+			Strings:     dict.Strings,
+			Interfaces:  dict.interfaces,
+			JSONEncoded: &dict.jsonEncoded,
 		}
 	}
 }

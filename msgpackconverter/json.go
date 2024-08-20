@@ -122,8 +122,7 @@ var (
 )
 
 type JSONConverter struct {
-	options     internal.DecodeOptions
-	encodedDict [][]byte
+	options internal.DecodeOptions
 }
 
 func NewJSONConverter(opts ...fastmsgpack.DecodeOption) JSONConverter {
@@ -131,13 +130,25 @@ func NewJSONConverter(opts ...fastmsgpack.DecodeOption) JSONConverter {
 	for _, o := range opts {
 		o(&ret.options)
 	}
-	if ret.options.Dict != nil {
-		ret.encodedDict = make([][]byte, len(ret.options.Dict.Strings))
-		for i, s := range ret.options.Dict.Strings {
-			ret.encodedDict[i] = encodeJSONString(nil, []byte(s))
-		}
-	}
+	ret.ensureDictPrepared()
 	return ret
+}
+
+func (c *JSONConverter) ensureDictPrepared() [][]byte {
+	if c.options.Dict == nil {
+		return nil
+	}
+	d := c.options.Dict
+	e := d.JSONEncoded.Load()
+	if e != nil {
+		return *e
+	}
+	encodedDict := make([][]byte, len(c.options.Dict.Strings))
+	for i, s := range c.options.Dict.Strings {
+		encodedDict[i] = encodeJSONString(nil, []byte(s))
+	}
+	d.JSONEncoded.Store(&encodedDict)
+	return encodedDict
 }
 
 // WithHideNulls drops all NULL values from the converted result. Array and map entries with value nil won't be silently skipped over.
@@ -150,6 +161,7 @@ func WithHideNulls() fastmsgpack.DecodeOption {
 type converter struct {
 	w *bufio.Writer
 	JSONConverter
+	encodedDict        [][]byte
 	uncommitted        []byte
 	transactionalState transactionalState
 }
@@ -171,11 +183,15 @@ const (
 )
 
 // Convert the given msgpack to JSON efficiently.
-func (c JSONConverter) Convert(dst io.Writer, data []byte) error {
+func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.DecodeOption) error {
 	cc := converter{
 		w:             bufio.NewWriter(dst),
 		JSONConverter: c,
 	}
+	for _, o := range opts {
+		o(&cc.options)
+	}
+	cc.encodedDict = cc.ensureDictPrepared()
 	if _, err := cc.convertValue(data); err != nil {
 		return err
 	}
