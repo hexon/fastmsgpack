@@ -25,6 +25,9 @@ func ValueLength(data []byte) (int, error) {
 			return SkipMultiple(data, 1, int(data[0]&0b00001111))
 		}
 		s := int(data[0]&0b00011111) + 1
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	}
 	if data[0] >= 0xe0 {
@@ -42,92 +45,176 @@ func ValueLength(data []byte) (int, error) {
 			return 0, ErrShortInput
 		}
 		s := int(data[1]) + 2
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xc5:
 		if len(data) < 3 {
 			return 0, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xc6:
 		if len(data) < 5 {
 			return 0, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xc7:
 		if len(data) < 3 {
 			return 0, ErrShortInput
 		}
 		s := int(data[1]) + 3
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xc8:
 		if len(data) < 4 {
 			return 0, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xc9:
 		if len(data) < 6 {
 			return 0, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xca:
+		if len(data) < 5 {
+			return 0, ErrShortInput
+		}
 		return 5, nil
 	case 0xcb:
+		if len(data) < 9 {
+			return 0, ErrShortInput
+		}
 		return 9, nil
 	case 0xcc:
+		if len(data) < 2 {
+			return 0, ErrShortInput
+		}
 		return 2, nil
 	case 0xcd:
+		if len(data) < 3 {
+			return 0, ErrShortInput
+		}
 		return 3, nil
 	case 0xce:
+		if len(data) < 5 {
+			return 0, ErrShortInput
+		}
 		return 5, nil
 	case 0xcf:
+		if len(data) < 9 {
+			return 0, ErrShortInput
+		}
 		return 9, nil
 	case 0xd0:
+		if len(data) < 2 {
+			return 0, ErrShortInput
+		}
 		return 2, nil
 	case 0xd1:
+		if len(data) < 3 {
+			return 0, ErrShortInput
+		}
 		return 3, nil
 	case 0xd2:
+		if len(data) < 5 {
+			return 0, ErrShortInput
+		}
 		return 5, nil
 	case 0xd3:
+		if len(data) < 9 {
+			return 0, ErrShortInput
+		}
 		return 9, nil
 	case 0xd4:
+		if len(data) < 3 {
+			return 0, ErrShortInput
+		}
 		return 3, nil
 	case 0xd5:
+		if len(data) < 4 {
+			return 0, ErrShortInput
+		}
 		return 4, nil
 	case 0xd6:
+		if len(data) < 6 {
+			return 0, ErrShortInput
+		}
 		return 6, nil
 	case 0xd7:
+		if len(data) < 10 {
+			return 0, ErrShortInput
+		}
 		return 10, nil
 	case 0xd8:
+		if len(data) < 18 {
+			return 0, ErrShortInput
+		}
 		return 18, nil
 	case 0xd9:
 		if len(data) < 2 {
 			return 0, ErrShortInput
 		}
 		s := int(data[1]) + 2
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xda:
 		if len(data) < 3 {
 			return 0, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 3
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xdb:
 		if len(data) < 5 {
 			return 0, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint32(data[1:5])) + 5
+		if len(data) < s {
+			return 0, ErrShortInput
+		}
 		return s, nil
 	case 0xdc:
+		if len(data) < 3 {
+			return 0, ErrShortInput
+		}
 		return SkipMultiple(data, 3, int(binary.BigEndian.Uint16(data[1:3])))
 	case 0xdd:
+		if len(data) < 5 {
+			return 0, ErrShortInput
+		}
 		return SkipMultiple(data, 5, int(binary.BigEndian.Uint32(data[1:5])))
 	case 0xde:
+		if len(data) < 3 {
+			return 0, ErrShortInput
+		}
 		return SkipMultiple(data, 3, 2*(int(binary.BigEndian.Uint16(data[1:3]))))
 	case 0xdf:
+		if len(data) < 5 {
+			return 0, ErrShortInput
+		}
 		return SkipMultiple(data, 5, 2*(int(binary.BigEndian.Uint32(data[1:5]))))
 	}
 	return 0, errors.New("unexpected 0xc1")

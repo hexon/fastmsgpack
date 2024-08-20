@@ -209,13 +209,13 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		}
 	}
 	minLen, preamble, val, lencalc := getDecoder(t)
-	if minLen > guaranteedLength && (preamble != "" || retType != "void") {
+	if minLen > guaranteedLength {
 		emitLengthCheck(w, retType, t, fmt.Sprint(minLen), "internal.ErrShortInput")
 	}
 	if preamble != "" {
 		fmt.Fprintf(w, "		%s\n", preamble)
 	}
-	if fmt.Sprint(minLen) != lencalc && retType != "void" {
+	if fmt.Sprint(minLen) != lencalc {
 		emitLengthCheck(w, retType, t, lencalc, "internal.ErrShortInput")
 	}
 	switch retType {
