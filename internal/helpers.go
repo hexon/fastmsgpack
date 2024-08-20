@@ -14,6 +14,7 @@ var (
 
 type DecodeOptions struct {
 	Dict            *Dict
+	FlavorSelectors map[uint]uint
 	JSON_HideNulls  bool
 }
 
@@ -45,6 +46,14 @@ func decodeString_ext(data []byte, extType int8, opt DecodeOptions) (string, err
 		ret, _, err := DecodeString(data, opt)
 		return ret, err
 
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return "", err
+		}
+		ret, _, err := DecodeString(data[j:], opt)
+		return ret, err
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return "", fmt.Errorf("unexpected extension %d while expecting string", extType)
@@ -55,6 +64,14 @@ func decodeInt_ext(data []byte, extType int8, opt DecodeOptions) (int, error) {
 	switch extType {
 	case 17: // Length-prefixed entry
 		ret, _, err := DecodeInt(data, opt)
+		return ret, err
+
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return 0, err
+		}
+		ret, _, err := DecodeInt(data[j:], opt)
 		return ret, err
 
 	default:
@@ -69,6 +86,14 @@ func decodeFloat32_ext(data []byte, extType int8, opt DecodeOptions) (float32, e
 		ret, _, err := DecodeFloat32(data, opt)
 		return ret, err
 
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return 0, err
+		}
+		ret, _, err := DecodeFloat32(data[j:], opt)
+		return ret, err
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return 0, fmt.Errorf("unexpected extension %d while expecting float32", extType)
@@ -81,6 +106,14 @@ func decodeFloat64_ext(data []byte, extType int8, opt DecodeOptions) (float64, e
 		ret, _, err := DecodeFloat64(data, opt)
 		return ret, err
 
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return 0, err
+		}
+		ret, _, err := DecodeFloat64(data[j:], opt)
+		return ret, err
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return 0, fmt.Errorf("unexpected extension %d while expecting float64", extType)
@@ -91,6 +124,14 @@ func decodeBool_ext(data []byte, extType int8, opt DecodeOptions) (bool, error) 
 	switch extType {
 	case 17: // Length-prefixed entry
 		ret, _, err := DecodeBool(data, opt)
+		return ret, err
+
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return false, err
+		}
+		ret, _, err := DecodeBool(data[j:], opt)
 		return ret, err
 
 	default:
@@ -121,6 +162,14 @@ func decodeTime_ext(data []byte, extType int8, opt DecodeOptions) (time.Time, er
 
 	case 17: // Length-prefixed entry
 		ret, _, err := DecodeTime(data, opt)
+		return ret, err
+
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return time.Time{}, err
+		}
+		ret, _, err := DecodeTime(data[j:], opt)
 		return ret, err
 
 	default:

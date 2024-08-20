@@ -355,6 +355,14 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 		_, err := c.convertValue(data)
 		return err
 
+	case 18: // Flavor pick
+		j, err := internal.DecodeFlavorPick(data, c.options)
+		if err != nil {
+			return err
+		}
+		_, err = c.convertValue(data[j:])
+		return err
+
 	default:
 		return errors.New("don't know how to encode Extension type " + strconv.FormatInt(int64(extType), 10))
 	}

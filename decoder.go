@@ -46,6 +46,15 @@ func WithDict(dict *Dict) DecodeOption {
 	}
 }
 
+func WithFlavorSelector(field, value uint) DecodeOption {
+	return func(opt *internal.DecodeOptions) {
+		if opt.FlavorSelectors == nil {
+			opt.FlavorSelectors = map[uint]uint{}
+		}
+		opt.FlavorSelectors[field] = value
+	}
+}
+
 // DecodeValue decodes the next value in the msgpack data. Return types are: nil, bool, int, float32, float64, string, []byte, time.Time, []any, map[string]any or Extension.
 func (d *Decoder) DecodeValue() (any, error) {
 	v, c, err := decodeValue(d.data[d.offset:], d.opt)
@@ -333,6 +342,14 @@ func decodeValue_ext(data []byte, extType int8, opt internal.DecodeOptions) (any
 
 	case 17: // Length-prefixed entry
 		ret, _, err := decodeValue(data, opt)
+		return ret, err
+
+	case 18: // Flavor pick
+		j, err := internal.DecodeFlavorPick(data, opt)
+		if err != nil {
+			return nil, err
+		}
+		ret, _, err := decodeValue(data[j:], opt)
 		return ret, err
 
 	default:
