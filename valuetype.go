@@ -14,6 +14,7 @@ const (
 	TypeArray
 	TypeMap
 	TypeTimestamp
+	TypeFlavorSelector
 	TypeUnknownExtension
 )
 
@@ -41,6 +42,8 @@ func (t ValueType) String() string {
 		return "map"
 	case TypeTimestamp:
 		return "timestamp"
+	case TypeFlavorSelector:
+		return "flavor selector"
 	case TypeUnknownExtension:
 		return "unknown extension"
 	default:
@@ -63,6 +66,9 @@ func decodeType_ext(data []byte, extType int8) ValueType {
 
 	case 17: // Length-prefixed entry
 		return DecodeType(data)
+
+	case 18:
+		return TypeFlavorSelector
 
 	default:
 		return TypeUnknownExtension

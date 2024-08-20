@@ -20,6 +20,7 @@ type Decoder struct {
 type skipInfo struct {
 	remainingElements int
 	fastSkip          int
+	forceJump         bool
 }
 
 // NewDecoder initializes a new Decoder.
@@ -127,111 +128,165 @@ func (d *Decoder) DecodeTime() (time.Time, error) {
 }
 
 func (d *Decoder) DecodeMapLen() (int, error) {
-	n, fastSkip, err := d.decodeMapLen()
+	si, err := d.decodeMapLen()
 	if err != nil {
 		return 0, err
 	}
-	d.consumedOne()
-	if n > 0 {
-		d.skipInfo = append(d.skipInfo, skipInfo{n * 2, fastSkip})
-	}
-	return n, nil
+	ret := si.remainingElements
+	si.remainingElements *= 2
+	d.consumingPush(si)
+	return ret, nil
 }
 
-func (d *Decoder) decodeMapLen() (int, int, error) {
-	data, fastSkip := d.consumeLengthPrefixEntry()
+func (d *Decoder) decodeMapLen() (skipInfo, error) {
+	data, end, forced, err := d.consumeWrappingExtensions()
+	if err != nil {
+		return skipInfo{}, err
+	}
 	if len(data) < 1 {
-		return 0, 0, internal.ErrShortInput
+		return skipInfo{}, internal.ErrShortInput
+	}
+	ret := skipInfo{
+		fastSkip:  end,
+		forceJump: forced,
 	}
 	if data[0] >= 0x80 && data[0] <= 0x8f {
 		d.offset++
-		return int(data[0] - 0x80), fastSkip, nil
+		ret.remainingElements = int(data[0] - 0x80)
+		return ret, nil
 	}
 	switch data[0] {
 	case 0xde:
 		if len(data) < 3 {
-			return 0, 0, internal.ErrShortInput
+			return skipInfo{}, internal.ErrShortInput
 		}
 		d.offset += 3
-		return int(binary.BigEndian.Uint16(data[1:3])), fastSkip, nil
+		ret.remainingElements = int(binary.BigEndian.Uint16(data[1:3]))
+		return ret, nil
 	case 0xdf:
 		if len(data) < 5 {
-			return 0, 0, internal.ErrShortInput
+			return skipInfo{}, internal.ErrShortInput
 		}
 		d.offset += 5
-		return int(binary.BigEndian.Uint32(data[1:5])), fastSkip, nil
+		ret.remainingElements = int(binary.BigEndian.Uint32(data[1:5]))
+		return ret, nil
 	}
-	return 0, 0, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting map")
+	return skipInfo{}, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting map")
 }
 
 func (d *Decoder) DecodeArrayLen() (int, error) {
-	n, fastSkip, err := d.decodeArrayLen()
+	si, err := d.decodeArrayLen()
 	if err != nil {
 		return 0, err
 	}
-	d.consumedOne()
-	if n > 0 {
-		d.skipInfo = append(d.skipInfo, skipInfo{n, fastSkip})
-	}
-	return n, nil
+	d.consumingPush(si)
+	return si.remainingElements, nil
 }
 
-func (d *Decoder) decodeArrayLen() (int, int, error) {
-	data, fastSkip := d.consumeLengthPrefixEntry()
+func (d *Decoder) decodeArrayLen() (skipInfo, error) {
+	data, end, forced, err := d.consumeWrappingExtensions()
+	if err != nil {
+		return skipInfo{}, err
+	}
 	if len(data) < 1 {
-		return 0, 0, internal.ErrShortInput
+		return skipInfo{}, internal.ErrShortInput
+	}
+	ret := skipInfo{
+		fastSkip:  end,
+		forceJump: forced,
 	}
 	if data[0] >= 0x90 && data[0] <= 0x9f {
 		d.offset++
-		return int(data[0] - 0x90), fastSkip, nil
+		ret.remainingElements = int(data[0] - 0x90)
+		return ret, nil
 	}
 	switch data[0] {
 	case 0xdc:
 		if len(data) < 3 {
-			return 0, 0, internal.ErrShortInput
+			return skipInfo{}, internal.ErrShortInput
 		}
 		d.offset += 3
-		return int(binary.BigEndian.Uint16(data[1:3])), fastSkip, nil
+		ret.remainingElements = int(binary.BigEndian.Uint16(data[1:3]))
+		return ret, nil
 	case 0xdd:
 		if len(data) < 5 {
-			return 0, 0, internal.ErrShortInput
+			return skipInfo{}, internal.ErrShortInput
 		}
 		d.offset += 5
-		return int(binary.BigEndian.Uint32(data[1:5])), fastSkip, nil
+		ret.remainingElements = int(binary.BigEndian.Uint32(data[1:5]))
+		return ret, nil
 	}
-	return 0, 0, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting array")
+	return skipInfo{}, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting array")
 }
 
-func (d *Decoder) consumeLengthPrefixEntry() ([]byte, int) {
+func (d *Decoder) consumeWrappingExtensions() ([]byte, int, bool, error) {
 	data := d.data[d.offset:]
 	if len(data) < 3 {
-		return data, 0
+		return data, 0, false, nil
 	}
-	if data[1] == 17 {
+	switch data[1] {
+	case 17:
 		switch data[0] {
 		case 0xd4, 0xd5, 0xd6, 0xd7, 0xd8:
 			d.offset += 2
-			return data[2:], d.offset + (1 << (data[0] - 0xd4))
+			return data[2:], d.offset + (1 << (data[0] - 0xd4)), false, nil
+		}
+	case 18:
+		switch data[0] {
+		case 0xd4, 0xd5, 0xd6, 0xd7, 0xd8:
+			d.offset += 2
+			return d.consumeFlavorSelector(data[2:][:1<<(data[0]-0xd4)])
 		}
 	}
 	switch data[0] {
 	case 0xc7:
-		if len(data) >= 3 && data[2] == 17 {
+		if len(data) < 3 {
+			break
+		}
+		switch data[2] {
+		case 17:
 			d.offset += 3
-			return data[3:], d.offset + int(data[1])
+			return data[3:], d.offset + int(data[1]), false, nil
+		case 18:
+			d.offset += 3
+			return d.consumeFlavorSelector(data[3:][:data[1]])
 		}
 	case 0xc8:
-		if len(data) >= 4 && data[3] == 17 {
+		if len(data) < 4 {
+			break
+		}
+		switch data[3] {
+		case 17:
 			d.offset += 4
-			return data[4:], d.offset + int(binary.BigEndian.Uint16(data[1:3]))
+			return data[4:], d.offset + int(binary.BigEndian.Uint16(data[1:3])), false, nil
+		case 18:
+			d.offset += 4
+			return d.consumeFlavorSelector(data[4:][:binary.BigEndian.Uint16(data[1:3])])
 		}
 	case 0xc9:
-		if len(data) >= 6 && data[5] == 17 {
+		if len(data) < 6 {
+			break
+		}
+		switch data[5] {
+		case 17:
 			d.offset += 6
-			return data[6:], d.offset + int(binary.BigEndian.Uint32(data[1:5]))
+			return data[6:], d.offset + int(binary.BigEndian.Uint32(data[1:5])), false, nil
+		case 18:
+			d.offset += 6
+			return d.consumeFlavorSelector(data[6:][:binary.BigEndian.Uint32(data[1:5])])
 		}
 	}
-	return data, 0
+	return data, 0, false, nil
+}
+
+func (d *Decoder) consumeFlavorSelector(data []byte) ([]byte, int, bool, error) {
+	j, err := internal.DecodeFlavorPick(data, d.opt)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	end := d.offset + len(data)
+	d.offset += j
+	return data[j:], end, true, nil
 }
 
 func (d *Decoder) Skip() error {
@@ -292,7 +347,34 @@ func (d *Decoder) consumedOne() {
 	if d.skipInfo[l].remainingElements > 1 {
 		d.skipInfo[l].remainingElements--
 	} else {
+		if d.skipInfo[l].forceJump {
+			d.offset = d.skipInfo[l].fastSkip
+		}
 		d.skipInfo = d.skipInfo[:l]
+	}
+}
+
+func (d *Decoder) consumingPush(add skipInfo) {
+	if add.remainingElements == 0 {
+		d.consumedOne()
+		if add.forceJump {
+			d.offset = add.fastSkip
+		}
+		return
+	}
+	l := len(d.skipInfo) - 1
+	if l < 0 {
+		d.skipInfo = append(d.skipInfo, add)
+		return
+	}
+	if d.skipInfo[l].remainingElements > 1 {
+		d.skipInfo[l].remainingElements--
+		d.skipInfo = append(d.skipInfo, add)
+	} else if d.skipInfo[l].forceJump {
+		// Retain our parent's fastSkip and forceJump values.
+		d.skipInfo[l].remainingElements = add.remainingElements
+	} else {
+		d.skipInfo[l] = add
 	}
 }
 
