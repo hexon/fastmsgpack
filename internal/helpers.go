@@ -14,6 +14,7 @@ var (
 
 type DecodeOptions struct {
 	Dict            *Dict
+	JSON_HideNulls  bool
 }
 
 func SkipMultiple(data []byte, offset, num int) (int, error) {

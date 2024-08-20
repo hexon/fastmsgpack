@@ -250,9 +250,9 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		case "string":
 			fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, regexp.MustCompile(`^internal\.UnsafeStringCast\((.+)\)$`).ReplaceAllString(val, "$1"))
 		case "nil":
-			fmt.Fprintf(w, "		return %s, c.appendRaw(%q)\n", lencalc, "null")
+			fmt.Fprintf(w, "		return %s, c.handleNil()\n", lencalc)
 		case "bool":
-			fmt.Fprintf(w, "		return %s, c.appendRaw(%q)\n", lencalc, val)
+			fmt.Fprintf(w, "		return %s, c.write(%sBytes)\n", lencalc, val)
 		case "float64":
 			fmt.Fprintf(w, "		return %s, c.appendFloat(%s)\n", lencalc, val)
 		case "float32":

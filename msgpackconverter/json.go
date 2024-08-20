@@ -115,22 +115,60 @@ var jsonSafeSet = [utf8.RuneSelf]bool{
 	'\u007f': true,
 }
 
+var (
+	falseBytes = []byte("false")
+	trueBytes  = []byte("true")
+	nullBytes  = []byte("null")
+)
+
 type JSONConverter struct {
+	options     internal.DecodeOptions
 	encodedDict [][]byte
 }
 
-func NewJSONConverter(dict *fastmsgpack.Dict) JSONConverter {
-	encodedDict := make([][]byte, len(dict.Strings))
-	for i, s := range dict.Strings {
-		encodedDict[i] = encodeJSONString(nil, []byte(s))
+func NewJSONConverter(opts ...fastmsgpack.DecodeOption) JSONConverter {
+	var ret JSONConverter
+	for _, o := range opts {
+		o(&ret.options)
 	}
-	return JSONConverter{encodedDict}
+	if ret.options.Dict != nil {
+		ret.encodedDict = make([][]byte, len(ret.options.Dict.Strings))
+		for i, s := range ret.options.Dict.Strings {
+			ret.encodedDict[i] = encodeJSONString(nil, []byte(s))
+		}
+	}
+	return ret
+}
+
+// WithHideNulls drops all NULL values from the converted result. Array and map entries with value nil won't be silently skipped over.
+func WithHideNulls() fastmsgpack.DecodeOption {
+	return func(opt *internal.DecodeOptions) {
+		opt.JSON_HideNulls = true
+	}
 }
 
 type converter struct {
 	w *bufio.Writer
 	JSONConverter
+	uncommitted        []byte
+	transactionalState transactionalState
 }
+
+type transactionalState uint8
+
+const (
+	// transactionalStateNormal means we just write everything straight into the bufio.Writer.
+	transactionalStateNormal transactionalState = iota
+
+	// transactionalStateTentative means we buffer all writes into c.uncommitted
+	transactionalStateTentative
+
+	// transactionalStateUndecided means that if the next write is handleNil(), we discard c.uncommitted and go to transactionalStateRolledBack. Any other write will write c.uncommitted out and go to transactionalStateNormal.
+	transactionalStateUndecided
+
+	// transactionalStateRolledBack means we just discarded c.uncommitted. The state should be changed before the next write.
+	transactionalStateRolledBack
+)
 
 // Convert the given msgpack to JSON efficiently.
 func (c JSONConverter) Convert(dst io.Writer, data []byte) error {
@@ -145,63 +183,129 @@ func (c JSONConverter) Convert(dst io.Writer, data []byte) error {
 }
 
 func (c *converter) convertValue_array(data []byte, offset, elements int) (int, error) {
-	if err := c.w.WriteByte('['); err != nil {
+	if err := c.writeByte('['); err != nil {
 		return 0, err
 	}
+	addComma := false
 	for i := 0; elements > i; i++ {
-		if i > 0 {
-			c.w.WriteByte(',')
+		if addComma {
+			if c.options.JSON_HideNulls {
+				c.transactionalState = transactionalStateTentative
+			}
+			if err := c.writeByte(','); err != nil {
+				return 0, err
+			}
 		}
-		c, err := c.convertValue(data[offset:])
-		if err != nil {
-			return 0, err
-		}
-		offset += c
-	}
-	return offset, c.w.WriteByte(']')
-}
-
-func (c *converter) convertValue_map(data []byte, offset, elements int) (int, error) {
-	if err := c.w.WriteByte('{'); err != nil {
-		return 0, err
-	}
-	for i := 0; elements > i; i++ {
-		if i > 0 {
-			c.w.WriteByte(',')
+		if c.options.JSON_HideNulls {
+			c.transactionalState = transactionalStateUndecided
 		}
 		n, err := c.convertValue(data[offset:])
 		if err != nil {
 			return 0, err
 		}
 		offset += n
-		c.w.WriteByte(':')
+		if c.transactionalState != transactionalStateRolledBack {
+			addComma = true
+		}
+		c.transactionalState = transactionalStateNormal
+	}
+	return offset, c.writeByte(']')
+}
+
+func (c *converter) convertValue_map(data []byte, offset, elements int) (int, error) {
+	if err := c.writeByte('{'); err != nil {
+		return 0, err
+	}
+	addComma := false
+	for i := 0; elements > i; i++ {
+		if c.options.JSON_HideNulls {
+			c.transactionalState = transactionalStateTentative
+		}
+		if addComma {
+			if err := c.writeByte(','); err != nil {
+				return 0, err
+			}
+		}
+		n, err := c.convertValue(data[offset:])
+		if err != nil {
+			return 0, err
+		}
+		offset += n
+		if err := c.writeByte(':'); err != nil {
+			return 0, err
+		}
+		if c.options.JSON_HideNulls {
+			c.transactionalState = transactionalStateUndecided
+		}
 		n, err = c.convertValue(data[offset:])
 		if err != nil {
 			return 0, err
 		}
 		offset += n
+		if c.transactionalState != transactionalStateRolledBack {
+			addComma = true
+		}
+		c.transactionalState = transactionalStateNormal
 	}
-	return offset, c.w.WriteByte('}')
+	return offset, c.writeByte('}')
 }
 
-func (c *converter) appendRaw(s string) error {
-	_, err := c.w.WriteString(s)
+func (c *converter) write(b []byte) error {
+	switch c.transactionalState {
+	case transactionalStateNormal:
+	case transactionalStateTentative:
+		c.uncommitted = append(c.uncommitted, b...)
+		return nil
+	case transactionalStateUndecided:
+		if _, err := c.w.Write(c.uncommitted); err != nil {
+			return err
+		}
+		c.uncommitted = c.uncommitted[:0]
+		c.transactionalState = transactionalStateNormal
+	}
+	_, err := c.w.Write(b)
 	return err
+}
+
+func (c *converter) writeByte(b byte) error {
+	switch c.transactionalState {
+	case transactionalStateNormal:
+	case transactionalStateTentative:
+		c.uncommitted = append(c.uncommitted, b)
+		return nil
+	case transactionalStateUndecided:
+		if _, err := c.w.Write(c.uncommitted); err != nil {
+			return err
+		}
+		c.uncommitted = c.uncommitted[:0]
+		c.transactionalState = transactionalStateNormal
+	}
+	return c.w.WriteByte(b)
+}
+
+func (c *converter) availableBuffer() []byte {
+	return c.uncommitted[len(c.uncommitted):]
+}
+
+func (c *converter) handleNil() error {
+	if c.transactionalState == transactionalStateUndecided {
+		c.transactionalState = transactionalStateRolledBack
+		c.uncommitted = c.uncommitted[:0]
+		return nil
+	}
+	return c.write(nullBytes)
 }
 
 func (c *converter) appendBytes(b []byte) error {
-	_, err := c.w.Write(encodeJSONString(c.w.AvailableBuffer(), b))
-	return err
+	return c.write(encodeJSONString(c.availableBuffer(), b))
 }
 
 func (c *converter) appendInt(i int) error {
-	_, err := c.w.Write(strconv.AppendInt(c.w.AvailableBuffer(), int64(i), 10))
-	return err
+	return c.write(strconv.AppendInt(c.availableBuffer(), int64(i), 10))
 }
 
 func (c *converter) appendFloat(f float64) error {
-	_, err := c.w.Write(strconv.AppendFloat(c.w.AvailableBuffer(), f, 'f', -1, 32))
-	return err
+	return c.write(strconv.AppendFloat(c.availableBuffer(), f, 'f', -1, 32))
 }
 
 func (c *converter) convertValue_ext(data []byte, extType int8) error {
@@ -211,7 +315,7 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 		if err != nil {
 			return err
 		}
-		buf := c.w.AvailableBuffer()
+		buf := c.availableBuffer()
 		buf = append(buf, '"')
 		if ts.Nanosecond() == 0 {
 			buf = ts.AppendFormat(buf, time.RFC3339)
@@ -219,8 +323,7 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 			buf = ts.AppendFormat(buf, time.RFC3339Nano)
 		}
 		buf = append(buf, '"')
-		_, err = c.w.Write(buf)
-		return err
+		return c.write(buf)
 
 	case int8(math.MinInt8): // Interned string
 		n, ok := internal.DecodeBytesToUint(data)
@@ -230,8 +333,7 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 		if n >= uint(len(c.encodedDict)) {
 			return fmt.Errorf("interned string %d is out of bounds for the dict (%d entries)", n, len(c.encodedDict))
 		}
-		_, err := c.w.Write(c.encodedDict[n])
-		return err
+		return c.write(c.encodedDict[n])
 
 	case 17: // Length-prefixed entry
 		_, err := c.convertValue(data)

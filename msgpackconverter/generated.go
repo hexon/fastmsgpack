@@ -35,11 +35,11 @@ func (c *converter) convertValue(data []byte) (int, error) {
 	}
 	switch data[0] {
 	case 0xc0:
-		return 1, c.appendRaw("null")
+		return 1, c.handleNil()
 	case 0xc2:
-		return 1, c.appendRaw("false")
+		return 1, c.write(falseBytes)
 	case 0xc3:
-		return 1, c.appendRaw("true")
+		return 1, c.write(trueBytes)
 	case 0xc4:
 		if len(data) < 2 {
 			return 0, internal.ErrShortInput
