@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Jille/genericz/slicez"
 	"github.com/hexon/fastmsgpack/internal"
 )
 
@@ -130,9 +131,9 @@ func recurseInterests(fields []string, subs map[string]SubresolverDescription, i
 
 // Resolve scans through the given data and returns an array with the fields you've requested from this Resolver.
 // Any []byte and string in the return value might point into memory from the given data. Don't modify the input data until you're done with the return value.
-func (r *Resolver) Resolve(data []byte) (foundFields []any, retErr error) {
+func (r *Resolver) Resolve(data []byte, opts ...DecodeOption) (foundFields []any, retErr error) {
 	rc := resolveCall{
-		decoder: NewDecoder(data, r.decodeOptions...),
+		decoder: NewDecoder(data, slicez.Concat(r.decodeOptions, opts)...),
 		result:  make([]any, r.numFields),
 	}
 	if err := rc.recurseMap(r.interests, false); err != nil {
