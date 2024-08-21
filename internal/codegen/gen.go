@@ -256,9 +256,9 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		case "bool":
 			fmt.Fprintf(w, "		return %s, c.write(%sBytes)\n", lencalc, val)
 		case "float64":
-			fmt.Fprintf(w, "		return %s, c.appendFloat(%s)\n", lencalc, val)
+			fmt.Fprintf(w, "		return %s, c.appendFloat64(%s)\n", lencalc, val)
 		case "float32":
-			fmt.Fprintf(w, "		return %s, c.appendFloat(float64(%s))\n", lencalc, val)
+			fmt.Fprintf(w, "		return %s, c.appendFloat32(%s)\n", lencalc, val)
 		default:
 			fmt.Fprintf(w, "		return %s, c.append%s(%s)\n", lencalc, ucfirst(t.DataType), val)
 		}
