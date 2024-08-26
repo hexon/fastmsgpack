@@ -1,12 +1,13 @@
 package fastmsgpack
 
 import (
-	"encoding/binary"
 	"errors"
 	"time"
 
 	"github.com/hexon/fastmsgpack/internal"
 )
+
+var ErrVoid = internal.ErrVoid
 
 // Decoder gives a low-level api for stepping through msgpack data.
 // Any []byte and string in return values might point into memory from the given data. Don't modify the input data until you're done with the return value.
@@ -128,165 +129,37 @@ func (d *Decoder) DecodeTime() (time.Time, error) {
 }
 
 func (d *Decoder) DecodeMapLen() (int, error) {
-	si, err := d.decodeMapLen()
+	elements, c, end, forceJump, err := internal.DecodeMapLen(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
-	ret := si.remainingElements
-	si.remainingElements *= 2
-	d.consumingPush(si)
-	return ret, nil
-}
-
-func (d *Decoder) decodeMapLen() (skipInfo, error) {
-	data, end, forced, err := d.consumeWrappingExtensions()
-	if err != nil {
-		return skipInfo{}, err
+	if end > 0 {
+		end += d.offset
 	}
-	if len(data) < 1 {
-		return skipInfo{}, internal.ErrShortInput
-	}
-	ret := skipInfo{
-		fastSkip:  end,
-		forceJump: forced,
-	}
-	if data[0] >= 0x80 && data[0] <= 0x8f {
-		d.offset++
-		ret.remainingElements = int(data[0] - 0x80)
-		return ret, nil
-	}
-	switch data[0] {
-	case 0xde:
-		if len(data) < 3 {
-			return skipInfo{}, internal.ErrShortInput
-		}
-		d.offset += 3
-		ret.remainingElements = int(binary.BigEndian.Uint16(data[1:3]))
-		return ret, nil
-	case 0xdf:
-		if len(data) < 5 {
-			return skipInfo{}, internal.ErrShortInput
-		}
-		d.offset += 5
-		ret.remainingElements = int(binary.BigEndian.Uint32(data[1:5]))
-		return ret, nil
-	}
-	return skipInfo{}, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting map")
+	d.offset += c
+	d.consumingPush(skipInfo{
+		remainingElements: elements * 2,
+		fastSkip:          end,
+		forceJump:         forceJump,
+	})
+	return elements, nil
 }
 
 func (d *Decoder) DecodeArrayLen() (int, error) {
-	si, err := d.decodeArrayLen()
+	elements, c, end, forceJump, err := internal.DecodeArrayLen(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
-	d.consumingPush(si)
-	return si.remainingElements, nil
-}
-
-func (d *Decoder) decodeArrayLen() (skipInfo, error) {
-	data, end, forced, err := d.consumeWrappingExtensions()
-	if err != nil {
-		return skipInfo{}, err
+	if end > 0 {
+		end += d.offset
 	}
-	if len(data) < 1 {
-		return skipInfo{}, internal.ErrShortInput
-	}
-	ret := skipInfo{
-		fastSkip:  end,
-		forceJump: forced,
-	}
-	if data[0] >= 0x90 && data[0] <= 0x9f {
-		d.offset++
-		ret.remainingElements = int(data[0] - 0x90)
-		return ret, nil
-	}
-	switch data[0] {
-	case 0xdc:
-		if len(data) < 3 {
-			return skipInfo{}, internal.ErrShortInput
-		}
-		d.offset += 3
-		ret.remainingElements = int(binary.BigEndian.Uint16(data[1:3]))
-		return ret, nil
-	case 0xdd:
-		if len(data) < 5 {
-			return skipInfo{}, internal.ErrShortInput
-		}
-		d.offset += 5
-		ret.remainingElements = int(binary.BigEndian.Uint32(data[1:5]))
-		return ret, nil
-	}
-	return skipInfo{}, errors.New("unexpected " + internal.DescribeValue(data) + " when expecting array")
-}
-
-func (d *Decoder) consumeWrappingExtensions() ([]byte, int, bool, error) {
-	data := d.data[d.offset:]
-	if len(data) < 3 {
-		return data, 0, false, nil
-	}
-	switch data[1] {
-	case 17:
-		switch data[0] {
-		case 0xd4, 0xd5, 0xd6, 0xd7, 0xd8:
-			d.offset += 2
-			return data[2:], d.offset + (1 << (data[0] - 0xd4)), false, nil
-		}
-	case 18:
-		switch data[0] {
-		case 0xd4, 0xd5, 0xd6, 0xd7, 0xd8:
-			d.offset += 2
-			return d.consumeFlavorSelector(data[2:][:1<<(data[0]-0xd4)])
-		}
-	}
-	switch data[0] {
-	case 0xc7:
-		if len(data) < 3 {
-			break
-		}
-		switch data[2] {
-		case 17:
-			d.offset += 3
-			return data[3:], d.offset + int(data[1]), false, nil
-		case 18:
-			d.offset += 3
-			return d.consumeFlavorSelector(data[3:][:data[1]])
-		}
-	case 0xc8:
-		if len(data) < 4 {
-			break
-		}
-		switch data[3] {
-		case 17:
-			d.offset += 4
-			return data[4:], d.offset + int(binary.BigEndian.Uint16(data[1:3])), false, nil
-		case 18:
-			d.offset += 4
-			return d.consumeFlavorSelector(data[4:][:binary.BigEndian.Uint16(data[1:3])])
-		}
-	case 0xc9:
-		if len(data) < 6 {
-			break
-		}
-		switch data[5] {
-		case 17:
-			d.offset += 6
-			return data[6:], d.offset + int(binary.BigEndian.Uint32(data[1:5])), false, nil
-		case 18:
-			d.offset += 6
-			return d.consumeFlavorSelector(data[6:][:binary.BigEndian.Uint32(data[1:5])])
-		}
-	}
-	return data, 0, false, nil
-}
-
-func (d *Decoder) consumeFlavorSelector(data []byte) ([]byte, int, bool, error) {
-	j, err := internal.DecodeFlavorPick(data, d.opt)
-	if err != nil {
-		return nil, 0, false, err
-	}
-	end := d.offset + len(data)
-	d.offset += j
-	return data[j:], end, true, nil
+	d.offset += c
+	d.consumingPush(skipInfo{
+		remainingElements: elements,
+		fastSkip:          end,
+		forceJump:         forceJump,
+	})
+	return elements, nil
 }
 
 func (d *Decoder) Skip() error {
@@ -380,32 +253,51 @@ func (d *Decoder) consumingPush(add skipInfo) {
 
 func decodeValue_array(data []byte, offset, num int, opt internal.DecodeOptions) ([]any, int, error) {
 	ret := make([]any, num)
+	var voided int
 	for i := range ret {
 		v, c, err := decodeValue(data[offset:], opt)
+		offset += c
 		if err != nil {
+			if err == ErrVoid {
+				voided++
+				continue
+			}
 			return nil, 0, err
 		}
-		ret[i] = v
-		offset += c
+		ret[i-voided] = v
 	}
+	ret = ret[:len(ret)-voided]
 	return ret, offset, nil
 }
 
 func decodeValue_map(data []byte, offset, num int, opt internal.DecodeOptions) (map[string]any, int, error) {
 	ret := make(map[string]any, num)
 	for num > 0 {
+		num--
 		k, c, err := internal.DecodeString(data[offset:], opt)
 		if err != nil {
+			if err == ErrVoid {
+				offset, err = internal.SkipMultiple(data, offset, 2)
+				if err == nil {
+					continue
+				}
+			}
 			return nil, 0, err
 		}
 		offset += c
 		v, c, err := decodeValue(data[offset:], opt)
 		if err != nil {
+			if err == ErrVoid {
+				c, err = internal.ValueLength(data[offset:])
+				if err == nil {
+					offset += c
+					continue
+				}
+			}
 			return nil, 0, err
 		}
 		ret[k] = v
 		offset += c
-		num--
 	}
 	return ret, offset, nil
 }
@@ -433,6 +325,9 @@ func decodeValue_ext(data []byte, extType int8, opt internal.DecodeOptions) (any
 		}
 		ret, _, err := decodeValue(data[j:], opt)
 		return ret, err
+
+	case 19:
+		return nil, ErrVoid
 
 	default:
 		return Extension{Type: extType, Data: data}, nil

@@ -42,6 +42,8 @@ func main() {
 		generate(&buf, "float64", "DecodeFloat64")
 		generate(&buf, "bool", "DecodeBool")
 		generate(&buf, "time", "DecodeTime")
+		generate(&buf, "map", "DecodeMapLen")
+		generate(&buf, "array", "DecodeArrayLen")
 
 		b := bytes.ReplaceAll(buf.Bytes(), []byte("internal."), nil)
 		formatted, err := format.Source(b)
@@ -117,6 +119,9 @@ func generate(w *bytes.Buffer, retType, name string) {
 		fmt.Fprintf(w, "func %s(data []byte) string {\n", name)
 	case "type":
 		fmt.Fprintf(w, "func %s(data []byte) ValueType {\n", name)
+	case "map", "array":
+		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (elements, consume, end int, forced bool, _ error) {\n", name)
+		typeRestricted = true
 	case "time":
 		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (time.Time, int, error) {\n", name)
 		typeRestricted = true
@@ -140,6 +145,14 @@ func generate(w *bytes.Buffer, retType, name string) {
 		fmt.Fprintf(w, "	if data[0] <= 0x7f {\n")
 		generateDecodeType(w, retType, name, guaranteedLength, positiveFixint)
 		fmt.Fprintf(w, "	}\n")
+	} else if retType == "map" {
+		fmt.Fprintf(w, "	if data[0] >= 0x80 && data[0] <= 0x8f {\n")
+		generateDecodeType(w, retType, name, guaranteedLength, fixmap)
+		fmt.Fprintf(w, "	}\n")
+	} else if retType == "array" {
+		fmt.Fprintf(w, "	if data[0] >= 0x90 && data[0] <= 0x9f {\n")
+		generateDecodeType(w, retType, name, guaranteedLength, fixarray)
+		fmt.Fprintf(w, "	}\n")
 	} else if !typeRestricted {
 		fmt.Fprintf(w, "	if data[0] < 0xc0 {\n")
 		fmt.Fprintf(w, "		if data[0] <= 0x7f {\n")
@@ -159,8 +172,8 @@ func generate(w *bytes.Buffer, retType, name string) {
 		generateDecodeType(w, retType, name, guaranteedLength, negativeFixint)
 		fmt.Fprintf(w, "	}\n")
 	}
+	fmt.Fprintf(w, "	switch data[0] {\n")
 	if typeRestricted && retType != "time" {
-		fmt.Fprintf(w, "	switch data[0] {\n")
 		for _, t := range types {
 			if t.ByteEnd != 0 || (t.DataType != retType && !(isNumericType(t.DataType) && isNumericType(retType)) && !(retType == "string" && t.DataType == "[]byte")) {
 				continue
@@ -168,11 +181,13 @@ func generate(w *bytes.Buffer, retType, name string) {
 			fmt.Fprintf(w, "	case 0x%02x:\n", t.Byte)
 			generateDecodeType(w, retType, name, guaranteedLength, t)
 		}
-		fmt.Fprintf(w, "	}\n")
-		fmt.Fprintf(w, "\n")
-		fmt.Fprintf(w, "	// Try extension decoding in case of a length-prefixed entry (#17)\n")
+		if retType != "map" && retType != "array" {
+			fmt.Fprintf(w, "	}\n")
+			fmt.Fprintf(w, "\n")
+			fmt.Fprintf(w, "	// Try extension decoding in case of a length-prefixed entry (#17) or flavors (#18)\n")
+			fmt.Fprintf(w, "	switch data[0] {\n")
+		}
 	}
-	fmt.Fprintf(w, "	switch data[0] {\n")
 	for _, t := range types {
 		if t.ByteEnd != 0 {
 			continue
@@ -191,6 +206,8 @@ func generate(w *bytes.Buffer, retType, name string) {
 		fmt.Fprintf(w, "	return %q\n", "0xc1")
 	case "type":
 		fmt.Fprintf(w, "	return TypeInvalid\n")
+	case "map", "array":
+		fmt.Fprintf(w, "	return 0, 0, 0, false, errors.New(%q + internal.DescribeValue(data) + %q)\n", "unexpected ", " when expecting "+retType)
 	default:
 		fmt.Fprintf(w, "	return %s, 0, errors.New(%q + internal.DescribeValue(data) + %q)\n", produceZero(retType), "unexpected ", " when expecting "+retType)
 	}
@@ -251,9 +268,7 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 			fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, val)
 		case "string":
 			fmt.Fprintf(w, "		return %s, c.appendBytes(%s)\n", lencalc, regexp.MustCompile(`^internal\.UnsafeStringCast\((.+)\)$`).ReplaceAllString(val, "$1"))
-		case "nil":
-			fmt.Fprintf(w, "		return %s, c.handleNil()\n", lencalc)
-		case "bool":
+		case "nil", "bool":
 			fmt.Fprintf(w, "		return %s, c.write(%sBytes)\n", lencalc, val)
 		case "float64":
 			fmt.Fprintf(w, "		return %s, c.appendFloat64(%s)\n", lencalc, val)
@@ -275,6 +290,18 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 		return
 	case "type":
 		fmt.Fprintf(w, "		return %s_ext(%s, int8(data[%d]))\n", lcfirst(thisFunc), val, t.ExtTypeAt)
+		return
+	case "map", "array":
+		switch t.DataType {
+		case retType:
+			fmt.Fprintf(w, "			return %s, %s, 0, false, nil\n", val, lencalc)
+		case "ext":
+			fmt.Fprintf(w, "			elements, consume, forced, err := %s_ext(%s, int8(data[%d]), opt)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
+			dataStart := genericz.Max(1, t.ExtTypeAt+1, t.DataStart, t.DynamicLengthStart+t.DynamicLengthLen+1)
+			fmt.Fprintf(w, "			return elements, consume + %d, %s, forced, err\n", dataStart, lencalc)
+		default:
+			fmt.Fprintf(w, "			return 0, 0, 0, false, errors.New(%q)\n", "unexpected array when expecting "+retType)
+		}
 		return
 	}
 	switch t.DataType {
@@ -326,6 +353,8 @@ func emitLengthCheck(w *bytes.Buffer, retType string, t MsgpackType, minLen stri
 		}
 	case "type":
 		fmt.Fprintf(w, "			return TypeInvalid\n")
+	case "map", "array":
+		fmt.Fprintf(w, "			return 0, 0, 0, false, %s\n", errName)
 	default:
 		fmt.Fprintf(w, "			return %s, 0, %s\n", produceZero(retType), errName)
 	}

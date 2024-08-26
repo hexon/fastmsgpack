@@ -35,7 +35,7 @@ func (c *converter) convertValue(data []byte) (int, error) {
 	}
 	switch data[0] {
 	case 0xc0:
-		return 1, c.handleNil()
+		return 1, c.write(nilBytes)
 	case 0xc2:
 		return 1, c.write(falseBytes)
 	case 0xc3:

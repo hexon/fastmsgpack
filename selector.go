@@ -2,8 +2,6 @@ package fastmsgpack
 
 import (
 	"encoding/binary"
-
-	"github.com/hexon/fastmsgpack/internal"
 )
 
 // Select returns a new msgpack containing only the requested fields.
@@ -13,7 +11,7 @@ func (r *Resolver) Select(dst, data []byte) (_ []byte, retErr error) {
 		decoder:  NewDecoder(data, r.decodeOptions...),
 		selected: dst,
 	}
-	if err := sc.selectFromMap(r.interests, false); err != nil {
+	if err := sc.selectFromMap(r.interests, false, nil); err != nil {
 		return nil, err
 	}
 	return sc.selected, nil
@@ -25,12 +23,18 @@ type selectCall struct {
 	selected []byte
 }
 
-func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool) error {
+func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool, uncommitted []byte) error {
 	elements, err := sc.decoder.DecodeMapLen()
 	if err != nil {
+		if err == ErrVoid {
+			if err := sc.decoder.Skip(); err != nil {
+				return err
+			}
+		}
 		return err
 	}
 
+	sc.selected = append(sc.selected, uncommitted...)
 	sc.selected = append(sc.selected, 0xdf, 0, 0, 0, 0)
 	lengthOffset := len(sc.selected) - 4
 	newLength := 0
@@ -43,25 +47,35 @@ func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool) err
 		if err != nil {
 			return err
 		}
+		rawKey := sc.decoder.data[keyAt:sc.decoder.offset]
 		switch x := interests[k].(type) {
 		case int:
-			if err := sc.decoder.Skip(); err != nil {
+			sought--
+			v, err := sc.decoder.DecodeRaw()
+			if err != nil {
+				if err == ErrVoid {
+					break
+				}
 				return err
 			}
-			sc.selected = append(sc.selected, sc.decoder.data[keyAt:sc.decoder.offset]...)
-			sought--
+			sc.selected = append(sc.selected, rawKey...)
+			sc.selected = append(sc.selected, v...)
 			newLength++
 		case map[string]any:
-			sc.selected = append(sc.selected, sc.decoder.data[keyAt:sc.decoder.offset]...)
 			sought--
-			if err := sc.selectFromMap(x, mustSkip || sought > 0); err != nil {
+			if err := sc.selectFromMap(x, mustSkip || sought > 0, rawKey); err != nil {
+				if err == ErrVoid {
+					break
+				}
 				return err
 			}
 			newLength++
 		case subresolver:
-			sc.selected = append(sc.selected, sc.decoder.data[keyAt:sc.decoder.offset]...)
 			sought--
-			if err := sc.selectFromArray(x, mustSkip || sought > 0); err != nil {
+			if err := sc.selectFromArray(x, mustSkip || sought > 0, rawKey); err != nil {
+				if err == ErrVoid {
+					break
+				}
 				return err
 			}
 			newLength++
@@ -86,16 +100,29 @@ func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool) err
 	return nil
 }
 
-func (sc *selectCall) selectFromArray(sub subresolver, mustSkip bool) error {
+func (sc *selectCall) selectFromArray(sub subresolver, mustSkip bool, uncommitted []byte) error {
 	elements, err := sc.decoder.DecodeArrayLen()
 	if err != nil {
+		if err == ErrVoid {
+			if err := sc.decoder.Skip(); err != nil {
+				return err
+			}
+		}
 		return err
 	}
-	sc.selected, _ = internal.AppendArrayLen(sc.selected, elements)
+	sc.selected = append(sc.selected, uncommitted...)
+	sc.selected = append(sc.selected, 0xdd, 0, 0, 0, 0)
+	lengthOffset := len(sc.selected) - 4
+	newLength := 0
 	for i := 0; elements > i; i++ {
-		if err := sc.selectFromMap(sub.interests, mustSkip || i < elements-1); err != nil {
+		if err := sc.selectFromMap(sub.interests, mustSkip || i < elements-1, nil); err != nil {
+			if err == ErrVoid {
+				continue
+			}
 			return err
 		}
+		newLength++
 	}
+	binary.BigEndian.PutUint32(sc.selected[lengthOffset:], uint32(newLength))
 	return nil
 }

@@ -150,6 +150,11 @@ type resolveCall struct {
 func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) error {
 	elements, err := rc.decoder.DecodeMapLen()
 	if err != nil {
+		if err == ErrVoid {
+			if err := rc.decoder.Skip(); err != nil {
+				return err
+			}
+		}
 		return err
 	}
 
@@ -158,29 +163,35 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) error
 		elements--
 		k, err := rc.decoder.DecodeString()
 		if err != nil {
+			if err == ErrVoid {
+				if err := rc.decoder.Skip(); err != nil {
+					return err
+				}
+				if err := rc.decoder.Skip(); err != nil {
+					return err
+				}
+				continue
+			}
 			return err
 		}
 		switch x := interests[k].(type) {
 		case int:
 			rc.result[x], err = rc.decoder.DecodeValue()
-			if err != nil {
-				return err
-			}
 			sought--
 		case map[string]any:
 			sought--
-			if err := rc.recurseMap(x, mustSkip || sought > 0); err != nil {
-				return err
-			}
+			err = rc.recurseMap(x, mustSkip || sought > 0)
 		case subresolver:
 			sought--
-			if err := rc.recurseArray(x, mustSkip || sought > 0); err != nil {
-				return err
-			}
+			err = rc.recurseArray(x, mustSkip || sought > 0)
 		default:
-			if err := rc.decoder.Skip(); err != nil {
-				return err
-			}
+			err = rc.decoder.Skip()
+		}
+		if err == ErrVoid {
+			err = rc.decoder.Skip()
+		}
+		if err != nil {
+			return err
 		}
 		if elements == 0 {
 			break
@@ -198,18 +209,28 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) error
 func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) error {
 	elements, err := rc.decoder.DecodeArrayLen()
 	if err != nil {
+		if err == ErrVoid {
+			if err := rc.decoder.Skip(); err != nil {
+				return err
+			}
+		}
 		return err
 	}
 	parentResults := rc.result
 	results := make([][]any, elements)
+	var voided int
 	for i := 0; elements > i; i++ {
 		rc.result = make([]any, sub.numFields)
 		if err := rc.recurseMap(sub.interests, mustSkip || i < elements-1); err != nil {
+			if err == ErrVoid {
+				voided++
+				continue
+			}
 			return err
 		}
-		results[i] = rc.result
+		results[i-voided] = rc.result
 	}
 	rc.result = parentResults
-	rc.result[sub.destination] = results
+	rc.result[sub.destination] = results[:len(results)-voided]
 	return nil
 }

@@ -118,7 +118,7 @@ var jsonSafeSet = [utf8.RuneSelf]bool{
 var (
 	falseBytes = []byte("false")
 	trueBytes  = []byte("true")
-	nullBytes  = []byte("null")
+	nilBytes   = []byte("null")
 )
 
 type JSONConverter struct {
@@ -149,13 +149,6 @@ func (c *JSONConverter) ensureDictPrepared() [][]byte {
 	}
 	d.JSONEncoded.Store(&encodedDict)
 	return encodedDict
-}
-
-// WithHideNulls drops all NULL values from the converted result. Array and map entries with value nil won't be silently skipped over.
-func WithHideNulls() fastmsgpack.DecodeOption {
-	return func(opt *internal.DecodeOptions) {
-		opt.JSON_HideNulls = true
-	}
 }
 
 type converter struct {
@@ -205,16 +198,12 @@ func (c *converter) convertValue_array(data []byte, offset, elements int) (int, 
 	addComma := false
 	for i := 0; elements > i; i++ {
 		if addComma {
-			if c.options.JSON_HideNulls {
-				c.transactionalState = transactionalStateTentative
-			}
+			c.transactionalState = transactionalStateTentative
 			if err := c.writeByte(','); err != nil {
 				return 0, err
 			}
 		}
-		if c.options.JSON_HideNulls {
-			c.transactionalState = transactionalStateUndecided
-		}
+		c.transactionalState = transactionalStateUndecided
 		n, err := c.convertValue(data[offset:])
 		if err != nil {
 			return 0, err
@@ -234,9 +223,7 @@ func (c *converter) convertValue_map(data []byte, offset, elements int) (int, er
 	}
 	addComma := false
 	for i := 0; elements > i; i++ {
-		if c.options.JSON_HideNulls {
-			c.transactionalState = transactionalStateTentative
-		}
+		c.transactionalState = transactionalStateTentative
 		if addComma {
 			if err := c.writeByte(','); err != nil {
 				return 0, err
@@ -247,12 +234,19 @@ func (c *converter) convertValue_map(data []byte, offset, elements int) (int, er
 			return 0, err
 		}
 		offset += n
+		if c.transactionalState == transactionalStateRolledBack {
+			// Skip the value
+			n, err := internal.ValueLength(data[offset:])
+			if err != nil {
+				return 0, err
+			}
+			offset += n
+			continue
+		}
 		if err := c.writeByte(':'); err != nil {
 			return 0, err
 		}
-		if c.options.JSON_HideNulls {
-			c.transactionalState = transactionalStateUndecided
-		}
+		c.transactionalState = transactionalStateUndecided
 		n, err = c.convertValue(data[offset:])
 		if err != nil {
 			return 0, err
@@ -301,15 +295,6 @@ func (c *converter) writeByte(b byte) error {
 
 func (c *converter) availableBuffer() []byte {
 	return c.uncommitted[len(c.uncommitted):]
-}
-
-func (c *converter) handleNil() error {
-	if c.transactionalState == transactionalStateUndecided {
-		c.transactionalState = transactionalStateRolledBack
-		c.uncommitted = c.uncommitted[:0]
-		return nil
-	}
-	return c.write(nullBytes)
 }
 
 func (c *converter) appendBytes(b []byte) error {
@@ -366,6 +351,11 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 		}
 		_, err = c.convertValue(data[j:])
 		return err
+
+	case 19: // Void
+		c.transactionalState = transactionalStateRolledBack
+		c.uncommitted = c.uncommitted[:0]
+		return nil
 
 	default:
 		return errors.New("don't know how to encode Extension type " + strconv.FormatInt(int64(extType), 10))

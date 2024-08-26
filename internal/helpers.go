@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	ErrVoid              = errors.New("tried to decode a void value")
 	ErrShortInput        = errors.New("msgpack data ends unexpectedly")
 	ErrShortInputForTime = errors.New("msgpack data is too short to hold a time")
 )
@@ -15,7 +16,6 @@ var (
 type DecodeOptions struct {
 	Dict            *Dict
 	FlavorSelectors map[uint]uint
-	JSON_HideNulls  bool
 }
 
 func SkipMultiple(data []byte, offset, num int) (int, error) {
@@ -53,6 +53,9 @@ func decodeString_ext(data []byte, extType int8, opt DecodeOptions) (string, err
 		}
 		ret, _, err := DecodeString(data[j:], opt)
 		return ret, err
+
+	case 19: // Void
+		return "", ErrVoid
 
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
@@ -94,6 +97,9 @@ func decodeFloat32_ext(data []byte, extType int8, opt DecodeOptions) (float32, e
 		ret, _, err := DecodeFloat32(data[j:], opt)
 		return ret, err
 
+	case 19: // Void
+		return 0, ErrVoid
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return 0, fmt.Errorf("unexpected extension %d while expecting float32", extType)
@@ -114,6 +120,9 @@ func decodeFloat64_ext(data []byte, extType int8, opt DecodeOptions) (float64, e
 		ret, _, err := DecodeFloat64(data[j:], opt)
 		return ret, err
 
+	case 19: // Void
+		return 0, ErrVoid
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return 0, fmt.Errorf("unexpected extension %d while expecting float64", extType)
@@ -133,6 +142,9 @@ func decodeBool_ext(data []byte, extType int8, opt DecodeOptions) (bool, error) 
 		}
 		ret, _, err := DecodeBool(data[j:], opt)
 		return ret, err
+
+	case 19: // Void
+		return false, ErrVoid
 
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
@@ -172,8 +184,57 @@ func decodeTime_ext(data []byte, extType int8, opt DecodeOptions) (time.Time, er
 		ret, _, err := DecodeTime(data[j:], opt)
 		return ret, err
 
+	case 19: // Void
+		return time.Time{}, ErrVoid
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return time.Time{}, fmt.Errorf("unexpected extension %d while expecting time", extType)
+	}
+}
+
+func decodeMapLen_ext(data []byte, extType int8, opt DecodeOptions) (elements, jump int, forced bool, err error) {
+	switch extType {
+	case 17: // Length-prefixed entry
+		elements, jump, _, forced, err = DecodeMapLen(data, opt)
+		return elements, jump, forced, err
+
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		elements, jump, _, _, err = DecodeMapLen(data[j:], opt)
+		return elements, jump + j, true, err
+
+	case 19: // Void
+		return 0, 0, false, ErrVoid
+
+	default:
+		extType := extType // Only let it escape in this (unlikely) branch.
+		return 0, 0, false, fmt.Errorf("unexpected extension %d while expecting map", extType)
+	}
+}
+
+func decodeArrayLen_ext(data []byte, extType int8, opt DecodeOptions) (elements, jump int, forced bool, err error) {
+	switch extType {
+	case 17: // Length-prefixed entry
+		elements, jump, _, forced, err = DecodeArrayLen(data, opt)
+		return elements, jump, forced, err
+
+	case 18: // Flavor pick
+		j, err := DecodeFlavorPick(data, opt)
+		if err != nil {
+			return 0, 0, false, err
+		}
+		elements, jump, _, _, err = DecodeArrayLen(data[j:], opt)
+		return elements, jump + j, true, err
+
+	case 19: // Void
+		return 0, 0, false, ErrVoid
+
+	default:
+		extType := extType // Only let it escape in this (unlikely) branch.
+		return 0, 0, false, fmt.Errorf("unexpected extension %d while expecting array", extType)
 	}
 }

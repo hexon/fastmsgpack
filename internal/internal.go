@@ -73,7 +73,7 @@ func DecodeLengthPrefixExtension(data []byte) int {
 	}
 }
 
-func DecodeMapLen(data []byte) (int, int, bool) {
+func DecodeUnwrappedMapLen(data []byte) (int, int, bool) {
 	switch data[0] {
 	case 0xde:
 		return int(binary.BigEndian.Uint16(data[1:3])), 3, true
@@ -87,7 +87,7 @@ func DecodeMapLen(data []byte) (int, int, bool) {
 	}
 }
 
-func DecodeArrayLen(data []byte) (int, int, bool) {
+func DecodeUnwrappedArrayLen(data []byte) (int, int, bool) {
 	switch data[0] {
 	case 0xdc:
 		return int(binary.BigEndian.Uint16(data[1:3])), 3, true

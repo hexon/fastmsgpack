@@ -65,10 +65,10 @@ func (le *lengthEncoder) parseValue() (int, error) {
 		le.appendAction(lengthEncoderSkip(l))
 		le.offset += l
 	}
-	elements, consume, isMap := internal.DecodeMapLen(le.data[le.offset:])
+	elements, consume, isMap := internal.DecodeUnwrappedMapLen(le.data[le.offset:])
 	if !isMap {
 		var ok bool
-		elements, consume, ok = internal.DecodeArrayLen(le.data[le.offset:])
+		elements, consume, ok = internal.DecodeUnwrappedArrayLen(le.data[le.offset:])
 		if !ok {
 			sz, err := Size(le.data[le.offset:])
 			if err != nil {
