@@ -34,7 +34,7 @@ func main() {
 		fmt.Fprintf(&buf, "	%q\n", "math")
 		fmt.Fprintf(&buf, "	%q\n", "time")
 		fmt.Fprintf(&buf, ")\n")
-		generate(&buf, "void", "ValueLength")
+		generate(&buf, "skip", "ValueLength")
 		generate(&buf, "_desc", "DescribeValue")
 		generate(&buf, "string", "DecodeString")
 		generate(&buf, "int", "DecodeInt")
@@ -107,7 +107,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 	fmt.Fprintf(w, "\n")
 	var typeRestricted bool
 	switch retType {
-	case "void":
+	case "skip":
 		fmt.Fprintf(w, "func %s(data []byte) (int, error) {\n", name)
 	case "json":
 		fmt.Fprintf(w, "func (c *converter) %s(data []byte) (int, error) {\n", name)
@@ -185,7 +185,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 	}
 	fmt.Fprintf(w, "	}\n")
 	switch retType {
-	case "void", "json":
+	case "skip", "json":
 		fmt.Fprintf(w, "	return 0, errors.New(%q)\n", "unexpected 0xc1")
 	case "_desc":
 		fmt.Fprintf(w, "	return %q\n", "0xc1")
@@ -263,7 +263,7 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 			fmt.Fprintf(w, "		return %s, c.append%s(%s)\n", lencalc, ucfirst(t.DataType), val)
 		}
 		return
-	case "void":
+	case "skip":
 		switch t.DataType {
 		case "array":
 			fmt.Fprintf(w, "		return internal.SkipMultiple(data, %s, %s)\n", lencalc, val)
@@ -316,7 +316,7 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 func emitLengthCheck(w *bytes.Buffer, retType string, t MsgpackType, minLen string, errName string) {
 	fmt.Fprintf(w, "		if len(data) < %s {\n", minLen)
 	switch retType {
-	case "void", "json":
+	case "skip", "json":
 		fmt.Fprintf(w, "			return 0, %s\n", errName)
 	case "_desc":
 		if minLen == "1" {
