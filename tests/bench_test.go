@@ -24,7 +24,7 @@ func benchmarkEncodeDecode(b *testing.B, src, dst interface{}) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			if _, err := fastmsgpack.Decode(buf, nil); err != nil {
+			if _, err := fastmsgpack.Decode(buf); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -40,7 +40,7 @@ func benchmarkEncodeDecode(b *testing.B, src, dst interface{}) {
 			if err := enc.Encode(src); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := fastmsgpack.Decode(buf.Bytes(), nil); err != nil {
+			if _, err := fastmsgpack.Decode(buf.Bytes()); err != nil {
 				b.Fatal(err)
 			}
 		}

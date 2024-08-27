@@ -43,7 +43,7 @@ var decoderTests = []decoderTest{
 func TestDecoder(t *testing.T) {
 	for i, test := range decoderTests {
 		b, _ := hex.DecodeString(test.data)
-		v, err := fastmsgpack.Decode(b, nil)
+		v, err := fastmsgpack.Decode(b)
 		if err != nil {
 			t.Errorf("Failed to decode: %v", err)
 			continue
@@ -92,7 +92,7 @@ func TestStringsBin(t *testing.T) {
 		s := hex.EncodeToString(b)
 		require.Equal(t, s, test.wanted)
 
-		out, err := fastmsgpack.Decode(b, nil)
+		out, err := fastmsgpack.Decode(b)
 		require.Nil(t, err)
 		require.Equal(t, out, test.in)
 	}
@@ -141,7 +141,7 @@ func TestBin(t *testing.T) {
 			t.Fatalf("%.32s != %.32s", s, test.wanted)
 		}
 
-		v, err := fastmsgpack.Decode(b, nil)
+		v, err := fastmsgpack.Decode(b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,7 +188,7 @@ func TestUint64(t *testing.T) {
 			t.Fatalf("%.32s != %.32s", s, test.wanted)
 		}
 
-		out, err := fastmsgpack.Decode(buf, nil)
+		out, err := fastmsgpack.Decode(buf)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -250,7 +250,7 @@ func TestInt64(t *testing.T) {
 			t.Fatalf("%.32s != %.32s", s, test.wanted)
 		}
 
-		out, err := fastmsgpack.Decode(buf.Bytes(), nil)
+		out, err := fastmsgpack.Decode(buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -284,7 +284,7 @@ func TestFloat32(t *testing.T) {
 			t.Fatalf("%.32s != %.32s", s, test.wanted)
 		}
 
-		out, err := fastmsgpack.Decode(b, nil)
+		out, err := fastmsgpack.Decode(b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -318,7 +318,7 @@ func TestFloat64(t *testing.T) {
 			t.Fatalf("%.32s != %.32s", s, test.wanted)
 		}
 
-		out, err := fastmsgpack.Decode(b, nil)
+		out, err := fastmsgpack.Decode(b)
 		if err != nil {
 			t.Fatal(err)
 		}

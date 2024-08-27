@@ -29,7 +29,7 @@ func (t *MsgpackTest) encode(v any) error {
 }
 
 func (t *MsgpackTest) decode() any {
-	ret, err := fastmsgpack.Decode(t.buf, nil)
+	ret, err := fastmsgpack.Decode(t.buf)
 	if err != nil {
 		t.T().Errorf("Failed to decode: %v", err)
 		return nil
