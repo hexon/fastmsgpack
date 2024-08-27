@@ -24,6 +24,8 @@ Fastmsgpack is a Golang msgpack decoder. It is fast, but lacks features you migh
 * It supports extension -1 and decodes such values into a time.Time.
 * It supports extension -128 (interned strings). I didn't find any documentation for it, but I've based it on https://github.com/vmihailenco/msgpack. You can pass a dict to the decoder and it will replace indexes into that dict with the strings from the dict.
 * It introduces extension 17 which wraps map and arrays. Because extension headers contain the byte-length, partial decoding can efficiently skip over those values.
+* It introduces extension 18 which is like a Switch statement inside the data. (Whether that's a good idea is up for debate.) We use this to pack data for multiple locales in one value.
+* It introduces extension 19 which encodes void. When decoding a void as for example a map value the key and value are treated as non-existent.
 
 ## Returned types
 
