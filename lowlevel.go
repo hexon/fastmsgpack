@@ -19,11 +19,11 @@ func SplitArray(data []byte) ([][]byte, error) {
 	}
 	ret := make([][]byte, elements)
 	for i := 0; elements > i; i++ {
-		start := d.offset
-		if err := d.Skip(); err != nil {
+		v, err := d.DecodeRaw()
+		if err != nil {
 			return nil, err
 		}
-		ret[i] = data[start:d.offset]
+		ret[i] = v
 	}
 	return ret, nil
 }
@@ -44,11 +44,10 @@ func SplitMap(data []byte, dict *Dict) ([]string, [][]byte, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		start := d.offset
-		if err := d.Skip(); err != nil {
+		values[i], err = d.DecodeRaw()
+		if err != nil {
 			return nil, nil, err
 		}
-		values[i] = data[start:d.offset]
 	}
 	return keys, values, nil
 }
