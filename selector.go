@@ -2,6 +2,8 @@ package fastmsgpack
 
 import (
 	"encoding/binary"
+
+	"github.com/hexon/fastmsgpack/internal"
 )
 
 // Select returns a new msgpack containing only the requested fields.
@@ -42,12 +44,14 @@ func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool, unc
 	sought := len(interests)
 	for elements > 0 {
 		elements--
-		keyAt := sc.decoder.offset
-		k, err := sc.decoder.DecodeString()
+		rawKey, err := sc.decoder.DecodeRaw()
 		if err != nil {
 			return err
 		}
-		rawKey := sc.decoder.data[keyAt:sc.decoder.offset]
+		k, _, err := internal.DecodeString(rawKey, sc.decoder.opt)
+		if err != nil {
+			return err
+		}
 		switch x := interests[k].(type) {
 		case int:
 			sought--
