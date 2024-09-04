@@ -120,7 +120,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 	case "type":
 		fmt.Fprintf(w, "func %s(data []byte) ValueType {\n", name)
 	case "map", "array":
-		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (elements, consume, end int, forced bool, _ error) {\n", name)
+		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (elements, consume, end int, stepIn []byte, _ error) {\n", name)
 		typeRestricted = true
 	case "time":
 		fmt.Fprintf(w, "func %s(data []byte, opt internal.DecodeOptions) (time.Time, int, error) {\n", name)
@@ -207,7 +207,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 	case "type":
 		fmt.Fprintf(w, "	return TypeInvalid\n")
 	case "map", "array":
-		fmt.Fprintf(w, "	return 0, 0, 0, false, errors.New(%q + internal.DescribeValue(data) + %q)\n", "unexpected ", " when expecting "+retType)
+		fmt.Fprintf(w, "	return 0, 0, 0, nil, errors.New(%q + internal.DescribeValue(data) + %q)\n", "unexpected ", " when expecting "+retType)
 	default:
 		fmt.Fprintf(w, "	return %s, 0, errors.New(%q + internal.DescribeValue(data) + %q)\n", produceZero(retType), "unexpected ", " when expecting "+retType)
 	}
@@ -294,13 +294,16 @@ func generateDecodeType(w *bytes.Buffer, retType, thisFunc string, guaranteedLen
 	case "map", "array":
 		switch t.DataType {
 		case retType:
-			fmt.Fprintf(w, "			return %s, %s, 0, false, nil\n", val, lencalc)
+			fmt.Fprintf(w, "			return %s, %s, 0, nil, nil\n", val, lencalc)
 		case "ext":
-			fmt.Fprintf(w, "			elements, consume, forced, err := %s_ext(%s, int8(data[%d]), opt)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
+			fmt.Fprintf(w, "			elements, consume, stepIn, err := %s_ext(%s, int8(data[%d]), opt)\n", lcfirst(thisFunc), val, t.ExtTypeAt)
 			dataStart := genericz.Max(1, t.ExtTypeAt+1, t.DataStart, t.DynamicLengthStart+t.DynamicLengthLen+1)
-			fmt.Fprintf(w, "			return elements, consume + %d, %s, forced, err\n", dataStart, lencalc)
+			fmt.Fprintf(w, "			if stepIn == nil {\n")
+			fmt.Fprintf(w, "				consume += %d\n", dataStart)
+			fmt.Fprintf(w, "			}\n")
+			fmt.Fprintf(w, "			return elements, consume, %s, stepIn, err\n", lencalc)
 		default:
-			fmt.Fprintf(w, "			return 0, 0, 0, false, errors.New(%q)\n", "unexpected array when expecting "+retType)
+			fmt.Fprintf(w, "			return 0, 0, 0, nil, errors.New(%q)\n", "unexpected array when expecting "+retType)
 		}
 		return
 	}
@@ -354,7 +357,7 @@ func emitLengthCheck(w *bytes.Buffer, retType string, t MsgpackType, minLen stri
 	case "type":
 		fmt.Fprintf(w, "			return TypeInvalid\n")
 	case "map", "array":
-		fmt.Fprintf(w, "			return 0, 0, 0, false, %s\n", errName)
+		fmt.Fprintf(w, "			return 0, 0, 0, nil, %s\n", errName)
 	default:
 		fmt.Fprintf(w, "			return %s, 0, %s\n", produceZero(retType), errName)
 	}

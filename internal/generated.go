@@ -1067,166 +1067,214 @@ func DecodeTime(data []byte, opt DecodeOptions) (time.Time, int, error) {
 	return time.Time{}, 0, errors.New("unexpected " + DescribeValue(data) + " when expecting time")
 }
 
-func DecodeMapLen(data []byte, opt DecodeOptions) (elements, consume, end int, forced bool, _ error) {
+func DecodeMapLen(data []byte, opt DecodeOptions) (elements, consume, end int, stepIn []byte, _ error) {
 	if len(data) < 1 {
-		return 0, 0, 0, false, ErrShortInput
+		return 0, 0, 0, nil, ErrShortInput
 	}
 	if data[0] >= 0x80 && data[0] <= 0x8f {
-		return int(data[0] & 0b00001111), 1, 0, false, nil
+		return int(data[0] & 0b00001111), 1, 0, nil, nil
 	}
 	switch data[0] {
 	case 0xde:
 		if len(data) < 3 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		return int(binary.BigEndian.Uint16(data[1:3])), 3, 0, false, nil
+		return int(binary.BigEndian.Uint16(data[1:3])), 3, 0, nil, nil
 	case 0xdf:
 		if len(data) < 5 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		return int(binary.BigEndian.Uint32(data[1:5])), 5, 0, false, nil
+		return int(binary.BigEndian.Uint32(data[1:5])), 5, 0, nil, nil
 	case 0xc7:
 		if len(data) < 3 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
 		s := int(data[1]) + 3
 		if len(data) < s {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[3:s], int8(data[2]), opt)
-		return elements, consume + 3, s, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[3:s], int8(data[2]), opt)
+		if stepIn == nil {
+			consume += 3
+		}
+		return elements, consume, s, stepIn, err
 	case 0xc8:
 		if len(data) < 4 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
 		if len(data) < s {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[4:s], int8(data[3]), opt)
-		return elements, consume + 4, s, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[4:s], int8(data[3]), opt)
+		if stepIn == nil {
+			consume += 4
+		}
+		return elements, consume, s, stepIn, err
 	case 0xc9:
 		if len(data) < 6 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
 		if len(data) < s {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[6:s], int8(data[5]), opt)
-		return elements, consume + 6, s, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[6:s], int8(data[5]), opt)
+		if stepIn == nil {
+			consume += 6
+		}
+		return elements, consume, s, stepIn, err
 	case 0xd4:
 		if len(data) < 3 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[2:3], int8(data[1]), opt)
-		return elements, consume + 2, 3, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[2:3], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 3, stepIn, err
 	case 0xd5:
 		if len(data) < 4 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[2:4], int8(data[1]), opt)
-		return elements, consume + 2, 4, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[2:4], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 4, stepIn, err
 	case 0xd6:
 		if len(data) < 6 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[2:6], int8(data[1]), opt)
-		return elements, consume + 2, 6, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[2:6], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 6, stepIn, err
 	case 0xd7:
 		if len(data) < 10 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[2:10], int8(data[1]), opt)
-		return elements, consume + 2, 10, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[2:10], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 10, stepIn, err
 	case 0xd8:
 		if len(data) < 18 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeMapLen_ext(data[2:18], int8(data[1]), opt)
-		return elements, consume + 2, 18, forced, err
+		elements, consume, stepIn, err := decodeMapLen_ext(data[2:18], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 18, stepIn, err
 	}
-	return 0, 0, 0, false, errors.New("unexpected " + DescribeValue(data) + " when expecting map")
+	return 0, 0, 0, nil, errors.New("unexpected " + DescribeValue(data) + " when expecting map")
 }
 
-func DecodeArrayLen(data []byte, opt DecodeOptions) (elements, consume, end int, forced bool, _ error) {
+func DecodeArrayLen(data []byte, opt DecodeOptions) (elements, consume, end int, stepIn []byte, _ error) {
 	if len(data) < 1 {
-		return 0, 0, 0, false, ErrShortInput
+		return 0, 0, 0, nil, ErrShortInput
 	}
 	if data[0] >= 0x90 && data[0] <= 0x9f {
-		return int(data[0] & 0b00001111), 1, 0, false, nil
+		return int(data[0] & 0b00001111), 1, 0, nil, nil
 	}
 	switch data[0] {
 	case 0xdc:
 		if len(data) < 3 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		return int(binary.BigEndian.Uint16(data[1:3])), 3, 0, false, nil
+		return int(binary.BigEndian.Uint16(data[1:3])), 3, 0, nil, nil
 	case 0xdd:
 		if len(data) < 5 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		return int(binary.BigEndian.Uint32(data[1:5])), 5, 0, false, nil
+		return int(binary.BigEndian.Uint32(data[1:5])), 5, 0, nil, nil
 	case 0xc7:
 		if len(data) < 3 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
 		s := int(data[1]) + 3
 		if len(data) < s {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[3:s], int8(data[2]), opt)
-		return elements, consume + 3, s, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[3:s], int8(data[2]), opt)
+		if stepIn == nil {
+			consume += 3
+		}
+		return elements, consume, s, stepIn, err
 	case 0xc8:
 		if len(data) < 4 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
 		if len(data) < s {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[4:s], int8(data[3]), opt)
-		return elements, consume + 4, s, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[4:s], int8(data[3]), opt)
+		if stepIn == nil {
+			consume += 4
+		}
+		return elements, consume, s, stepIn, err
 	case 0xc9:
 		if len(data) < 6 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
 		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
 		if len(data) < s {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[6:s], int8(data[5]), opt)
-		return elements, consume + 6, s, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[6:s], int8(data[5]), opt)
+		if stepIn == nil {
+			consume += 6
+		}
+		return elements, consume, s, stepIn, err
 	case 0xd4:
 		if len(data) < 3 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[2:3], int8(data[1]), opt)
-		return elements, consume + 2, 3, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[2:3], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 3, stepIn, err
 	case 0xd5:
 		if len(data) < 4 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[2:4], int8(data[1]), opt)
-		return elements, consume + 2, 4, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[2:4], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 4, stepIn, err
 	case 0xd6:
 		if len(data) < 6 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[2:6], int8(data[1]), opt)
-		return elements, consume + 2, 6, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[2:6], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 6, stepIn, err
 	case 0xd7:
 		if len(data) < 10 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[2:10], int8(data[1]), opt)
-		return elements, consume + 2, 10, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[2:10], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 10, stepIn, err
 	case 0xd8:
 		if len(data) < 18 {
-			return 0, 0, 0, false, ErrShortInput
+			return 0, 0, 0, nil, ErrShortInput
 		}
-		elements, consume, forced, err := decodeArrayLen_ext(data[2:18], int8(data[1]), opt)
-		return elements, consume + 2, 18, forced, err
+		elements, consume, stepIn, err := decodeArrayLen_ext(data[2:18], int8(data[1]), opt)
+		if stepIn == nil {
+			consume += 2
+		}
+		return elements, consume, 18, stepIn, err
 	}
-	return 0, 0, 0, false, errors.New("unexpected " + DescribeValue(data) + " when expecting array")
+	return 0, 0, 0, nil, errors.New("unexpected " + DescribeValue(data) + " when expecting array")
 }

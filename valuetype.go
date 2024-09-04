@@ -16,6 +16,7 @@ const (
 	TypeTimestamp
 	TypeFlavorSelector
 	TypeVoid
+	TypeInjection
 	TypeUnknownExtension
 )
 
@@ -47,6 +48,8 @@ func (t ValueType) String() string {
 		return "flavor selector"
 	case TypeVoid:
 		return "void"
+	case TypeInjection:
+		return "injection"
 	case TypeUnknownExtension:
 		return "unknown extension"
 	default:
@@ -75,6 +78,9 @@ func decodeType_ext(data []byte, extType int8) ValueType {
 
 	case 19:
 		return TypeVoid
+
+	case 20:
+		return TypeInjection
 
 	default:
 		return TypeUnknownExtension

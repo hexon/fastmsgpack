@@ -26,6 +26,7 @@ Fastmsgpack is a Golang msgpack decoder. It is fast, but lacks features you migh
 * It introduces extension 17 which wraps map and arrays. Because extension headers contain the byte-length, partial decoding can efficiently skip over those values.
 * It introduces extension 18 which is like a Switch statement inside the data. (Whether that's a good idea is up for debate.) We use this to pack data for multiple locales in one value.
 * It introduces extension 19 which encodes void. When decoding a void as for example a map value the key and value are treated as non-existent.
+* It introduces extension 20 which injects a piece of msgpack in that place. It's a placeholder for data to be specified when decoding.
 
 ## Returned types
 

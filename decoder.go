@@ -12,23 +12,23 @@ var ErrVoid = internal.ErrVoid
 // Decoder gives a low-level api for stepping through msgpack data.
 // Any []byte and string in return values might point into memory from the given data. Don't modify the input data until you're done with the return value.
 type Decoder struct {
-	data     []byte
-	opt      internal.DecodeOptions
-	skipInfo []skipInfo
-	offset   int
+	data        []byte
+	opt         internal.DecodeOptions
+	nestingInfo []nestingInfo
+	offset      int
 }
 
-type skipInfo struct {
+type nestingInfo struct {
+	returnTo          []byte
 	remainingElements int
-	fastSkip          int
-	forceJump         bool
+	end               int
 }
 
 // NewDecoder initializes a new Decoder.
 func NewDecoder(data []byte, opts ...DecodeOption) *Decoder {
 	d := &Decoder{
-		data:     data,
-		skipInfo: make([]skipInfo, 0, 8),
+		data:        data,
+		nestingInfo: make([]nestingInfo, 0, 8),
 	}
 	for _, o := range opts {
 		o(&d.opt)
@@ -54,6 +54,16 @@ func WithFlavorSelector(field, value uint) DecodeOption {
 			opt.FlavorSelectors = map[uint]uint{}
 		}
 		opt.FlavorSelectors[field] = value
+	}
+}
+
+// WithInjection replaces any encountered extension 20 encoding number $field with the given msgpack data.
+func WithInjection(field uint, msgpack []byte) DecodeOption {
+	return func(opt *internal.DecodeOptions) {
+		if opt.Injections == nil {
+			opt.Injections = map[uint][]byte{}
+		}
+		opt.Injections[field] = msgpack
 	}
 }
 
@@ -129,7 +139,7 @@ func (d *Decoder) DecodeTime() (time.Time, error) {
 }
 
 func (d *Decoder) DecodeMapLen() (int, error) {
-	elements, c, end, forceJump, err := internal.DecodeMapLen(d.data[d.offset:], d.opt)
+	elements, c, end, stepIn, err := internal.DecodeMapLen(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
@@ -137,16 +147,12 @@ func (d *Decoder) DecodeMapLen() (int, error) {
 		end += d.offset
 	}
 	d.offset += c
-	d.consumingPush(skipInfo{
-		remainingElements: elements * 2,
-		fastSkip:          end,
-		forceJump:         forceJump,
-	})
+	d.consumingPush(elements*2, c, end, stepIn)
 	return elements, nil
 }
 
 func (d *Decoder) DecodeArrayLen() (int, error) {
-	elements, c, end, forceJump, err := internal.DecodeArrayLen(d.data[d.offset:], d.opt)
+	elements, c, end, stepIn, err := internal.DecodeArrayLen(d.data[d.offset:], d.opt)
 	if err != nil {
 		return 0, err
 	}
@@ -154,11 +160,7 @@ func (d *Decoder) DecodeArrayLen() (int, error) {
 		end += d.offset
 	}
 	d.offset += c
-	d.consumingPush(skipInfo{
-		remainingElements: elements,
-		fastSkip:          end,
-		forceJump:         forceJump,
-	})
+	d.consumingPush(elements, c, end, stepIn)
 	return elements, nil
 }
 
@@ -188,17 +190,22 @@ func (d *Decoder) DecodeRaw() ([]byte, error) {
 // Break out of the map or array we're currently in.
 // This can only be called before the last element of the array/map is read, because otherwise you'd break out one level higher.
 func (d *Decoder) Break() error {
-	l := len(d.skipInfo) - 1
+	l := len(d.nestingInfo) - 1
 	if l < 0 {
 		return errors.New("fastmsgpack.Decoder.Break: can't Break at the top level")
 	}
-	si := d.skipInfo[l]
-	d.skipInfo = d.skipInfo[:l]
-	if si.fastSkip > 0 {
-		d.offset = si.fastSkip
+	ni := d.nestingInfo[l]
+	d.nestingInfo[l].returnTo = nil // don't retain the pointer
+	d.nestingInfo = d.nestingInfo[:l]
+	switch {
+	case ni.returnTo != nil:
+		d.data = ni.returnTo
+		fallthrough
+	case ni.end > 0:
+		d.offset = ni.end
 		return nil
 	}
-	c, err := internal.SkipMultiple(d.data, d.offset, si.remainingElements)
+	c, err := internal.SkipMultiple(d.data, d.offset, ni.remainingElements)
 	if err != nil {
 		return err
 	}
@@ -213,41 +220,55 @@ func (d *Decoder) PeekType() ValueType {
 }
 
 func (d *Decoder) consumedOne() {
-	l := len(d.skipInfo) - 1
+	l := len(d.nestingInfo) - 1
 	if l < 0 {
 		return
 	}
-	if d.skipInfo[l].remainingElements > 1 {
-		d.skipInfo[l].remainingElements--
+	if d.nestingInfo[l].remainingElements > 1 {
+		d.nestingInfo[l].remainingElements--
 	} else {
-		if d.skipInfo[l].forceJump {
-			d.offset = d.skipInfo[l].fastSkip
+		if d.nestingInfo[l].returnTo != nil {
+			d.data = d.nestingInfo[l].returnTo
+			d.offset = d.nestingInfo[l].end
+			d.nestingInfo[l].returnTo = nil // don't retain the pointer
 		}
-		d.skipInfo = d.skipInfo[:l]
+		d.nestingInfo = d.nestingInfo[:l]
 	}
 }
 
-func (d *Decoder) consumingPush(add skipInfo) {
-	if add.remainingElements == 0 {
+func (d *Decoder) consumingPush(elements, consume, end int, stepIn []byte) {
+	// invariant: If stepIn != nil, end is known (and not 0)
+	if elements == 0 {
 		d.consumedOne()
-		if add.forceJump {
-			d.offset = add.fastSkip
+		// We either have an extension-wrapped value and $end is known; or we have a simple 0x80 empty map, in which case d.offset is already adjusted.
+		if end > 0 {
+			d.offset = end
 		}
 		return
 	}
-	l := len(d.skipInfo) - 1
+	add := nestingInfo{
+		remainingElements: elements,
+		end:               end,
+	}
+	if stepIn != nil {
+		add.returnTo = d.data
+		add.end = end
+		d.data = stepIn
+		d.offset = consume
+	}
+	l := len(d.nestingInfo) - 1
 	if l < 0 {
-		d.skipInfo = append(d.skipInfo, add)
+		d.nestingInfo = append(d.nestingInfo, add)
 		return
 	}
-	if d.skipInfo[l].remainingElements > 1 {
-		d.skipInfo[l].remainingElements--
-		d.skipInfo = append(d.skipInfo, add)
-	} else if d.skipInfo[l].forceJump {
-		// Retain our parent's fastSkip and forceJump values.
-		d.skipInfo[l].remainingElements = add.remainingElements
+	if d.nestingInfo[l].remainingElements > 1 {
+		d.nestingInfo[l].remainingElements--
+		d.nestingInfo = append(d.nestingInfo, add)
+	} else if d.nestingInfo[l].returnTo != nil {
+		// Retain our parent's returnTo and end values, because we are the last child of our parent our end is their end.
+		d.nestingInfo[l].remainingElements = add.remainingElements
 	} else {
-		d.skipInfo[l] = add
+		d.nestingInfo[l] = add
 	}
 }
 
@@ -328,6 +349,14 @@ func decodeValue_ext(data []byte, extType int8, opt internal.DecodeOptions) (any
 
 	case 19:
 		return nil, ErrVoid
+
+	case 20: // Injection
+		b, err := internal.DecodeInjectionExtension(data, opt)
+		if err != nil {
+			return nil, err
+		}
+		ret, _, err := decodeValue(b, opt)
+		return ret, err
 
 	default:
 		return Extension{Type: extType, Data: data}, nil

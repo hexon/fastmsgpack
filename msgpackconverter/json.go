@@ -357,6 +357,14 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 		c.uncommitted = c.uncommitted[:0]
 		return nil
 
+	case 20: // Injection
+		b, err := internal.DecodeInjectionExtension(data, c.options)
+		if err != nil {
+			return err
+		}
+		_, err = c.convertValue(b)
+		return err
+
 	default:
 		return errors.New("don't know how to encode Extension type " + strconv.FormatInt(int64(extType), 10))
 	}
