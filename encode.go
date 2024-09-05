@@ -168,6 +168,13 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 	case Extension:
 		return v.AppendMsgpack(dst)
 
+	case interface{ MarshalMsgpack() ([]byte, error) }:
+		b, err := v.MarshalMsgpack()
+		if err != nil {
+			return nil, err
+		}
+		return append(dst, b...), nil
+
 	default:
 		rv := reflect.ValueOf(v)
 		switch rv.Kind() {
