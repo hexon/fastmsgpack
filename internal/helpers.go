@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unsafe"
 )
 
 var (
@@ -17,6 +18,10 @@ type DecodeOptions struct {
 	Dict            *Dict
 	FlavorSelectors map[uint]uint
 	Injections      map[uint][]byte
+}
+
+func UnsafeStringCast(data []byte) string {
+	return unsafe.String(unsafe.SliceData(data), len(data))
 }
 
 func SkipMultiple(data []byte, offset, num int) (int, error) {
