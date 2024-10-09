@@ -32,40 +32,9 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 		return append(dst, 0xc2), nil
 
 	case []byte:
-		if len(v) <= math.MaxUint8 {
-			dst = append(dst, 0xc4, uint8(len(v)))
-		} else if len(v) <= math.MaxUint16 {
-			dst = append(dst, 0xc5, byte(len(v)>>8), byte(len(v)))
-		} else if len(v) <= math.MaxUint32 {
-			dst = append(dst, 0xc6, byte(len(v)>>24), byte(len(v)>>16), byte(len(v)>>8), byte(len(v)))
-		} else {
-			return nil, fmt.Errorf("fastmsgpack.Encode: byte slice too long to encode (len %d)", len(v))
-		}
-		return append(dst, v...), nil
+		return encodeBytes(dst, v)
 	case string:
-		if idx, ok := o.Dict[v]; ok {
-			if idx <= math.MaxUint8 {
-				return append(dst, 0xd4, 128, byte(idx)), nil
-			} else if idx <= math.MaxUint16 {
-				return append(dst, 0xd5, 128, byte(idx>>8), byte(idx)), nil
-			} else if idx <= math.MaxUint32 {
-				return append(dst, 0xd6, 128, byte(idx>>24), byte(idx>>16), byte(idx>>8), byte(idx)), nil
-			} else if idx <= math.MaxInt64 {
-				return append(dst, 0xd7, 128, byte(idx>>56), byte(idx>>48), byte(idx>>40), byte(idx>>32), byte(idx>>24), byte(idx>>16), byte(idx>>8), byte(idx)), nil
-			}
-		}
-		if len(v) < 32 {
-			dst = append(dst, 0xa0|byte(len(v)))
-		} else if len(v) <= math.MaxUint8 {
-			dst = append(dst, 0xd9, uint8(len(v)))
-		} else if len(v) <= math.MaxUint16 {
-			dst = append(dst, 0xda, byte(len(v)>>8), byte(len(v)))
-		} else if len(v) <= math.MaxUint32 {
-			dst = append(dst, 0xdb, byte(len(v)>>24), byte(len(v)>>16), byte(len(v)>>8), byte(len(v)))
-		} else {
-			return nil, fmt.Errorf("fastmsgpack.Encode: string too long to encode (len %d)", len(v))
-		}
-		return append(dst, v...), nil
+		return o.encodeString(dst, v)
 
 	case float32:
 		var buf [5]byte
@@ -155,16 +124,7 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 		return dst, nil
 
 	case time.Time:
-		secs := v.Unix()
-		nanos := v.Nanosecond()
-		if secs>>34 != 0 {
-			return append(dst, 0xc7, 12, 255, byte(nanos>>24), byte(nanos>>16), byte(nanos>>8), byte(nanos), byte(secs>>56), byte(secs>>48), byte(secs>>40), byte(secs>>32), byte(secs>>24), byte(secs>>16), byte(secs>>8), byte(secs)), nil
-		}
-		val := uint64(nanos<<34) | uint64(secs)
-		if val&0xffffffff00000000 == 0 {
-			return append(dst, 0xd6, 255, byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
-		}
-		return append(dst, 0xd7, 255, byte(val>>56), byte(val>>48), byte(val>>40), byte(val>>32), byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
+		return encodeTime(dst, v)
 	case Extension:
 		return v.AppendMsgpack(dst)
 
@@ -215,6 +175,58 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 			return nil, fmt.Errorf("fastmsgpack.Encode: don't know how to encode %T", v)
 		}
 	}
+}
+
+func (o EncodeOptions) encodeString(dst []byte, v string) ([]byte, error) {
+	if idx, ok := o.Dict[v]; ok {
+		if idx <= math.MaxUint8 {
+			return append(dst, 0xd4, 128, byte(idx)), nil
+		} else if idx <= math.MaxUint16 {
+			return append(dst, 0xd5, 128, byte(idx>>8), byte(idx)), nil
+		} else if idx <= math.MaxUint32 {
+			return append(dst, 0xd6, 128, byte(idx>>24), byte(idx>>16), byte(idx>>8), byte(idx)), nil
+		} else if idx <= math.MaxInt64 {
+			return append(dst, 0xd7, 128, byte(idx>>56), byte(idx>>48), byte(idx>>40), byte(idx>>32), byte(idx>>24), byte(idx>>16), byte(idx>>8), byte(idx)), nil
+		}
+	}
+	if len(v) < 32 {
+		dst = append(dst, 0xa0|byte(len(v)))
+	} else if len(v) <= math.MaxUint8 {
+		dst = append(dst, 0xd9, uint8(len(v)))
+	} else if len(v) <= math.MaxUint16 {
+		dst = append(dst, 0xda, byte(len(v)>>8), byte(len(v)))
+	} else if len(v) <= math.MaxUint32 {
+		dst = append(dst, 0xdb, byte(len(v)>>24), byte(len(v)>>16), byte(len(v)>>8), byte(len(v)))
+	} else {
+		return nil, fmt.Errorf("fastmsgpack.Encode: string too long to encode (len %d)", len(v))
+	}
+	return append(dst, v...), nil
+}
+
+func encodeBytes(dst []byte, v []byte) ([]byte, error) {
+	if len(v) <= math.MaxUint8 {
+		dst = append(dst, 0xc4, uint8(len(v)))
+	} else if len(v) <= math.MaxUint16 {
+		dst = append(dst, 0xc5, byte(len(v)>>8), byte(len(v)))
+	} else if len(v) <= math.MaxUint32 {
+		dst = append(dst, 0xc6, byte(len(v)>>24), byte(len(v)>>16), byte(len(v)>>8), byte(len(v)))
+	} else {
+		return nil, fmt.Errorf("fastmsgpack.Encode: byte slice too long to encode (len %d)", len(v))
+	}
+	return append(dst, v...), nil
+}
+
+func encodeTime(dst []byte, v time.Time) ([]byte, error) {
+	secs := v.Unix()
+	nanos := v.Nanosecond()
+	if secs>>34 != 0 {
+		return append(dst, 0xc7, 12, 255, byte(nanos>>24), byte(nanos>>16), byte(nanos>>8), byte(nanos), byte(secs>>56), byte(secs>>48), byte(secs>>40), byte(secs>>32), byte(secs>>24), byte(secs>>16), byte(secs>>8), byte(secs)), nil
+	}
+	val := uint64(nanos<<34) | uint64(secs)
+	if val&0xffffffff00000000 == 0 {
+		return append(dst, 0xd6, 255, byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
+	}
+	return append(dst, 0xd7, 255, byte(val>>56), byte(val>>48), byte(val>>40), byte(val>>32), byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
 }
 
 func appendCompactInt(dst []byte, i int) []byte {
