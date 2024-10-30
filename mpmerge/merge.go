@@ -45,7 +45,8 @@ func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDi
 	}
 	newSize := len(m.Changes)
 	for _, sm := range m.Changes {
-		if _, ok := sm.(DeleteEntry); ok {
+		switch sm.(type) {
+		case DeleteEntry, Each:
 			newSize--
 		}
 	}
@@ -57,7 +58,10 @@ func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDi
 			return nil, err
 		}
 		keys[i] = k
-		if _, def := m.Changes[k]; !def {
+		sm, def := m.Changes[k]
+		if !def {
+			newSize++
+		} else if _, ok := sm.(Each); ok {
 			newSize++
 		}
 		values[i], err = dec.DecodeRaw()
@@ -92,6 +96,10 @@ func (m StringMap) descend(dst, data []byte, o fastmsgpack.EncodeOptions, readDi
 			continue
 		}
 		if _, del := sm.(DeleteEntry); del {
+			continue
+		}
+		if _, del := sm.(Each); del {
+			// The entry doesn't exist, so there are no entries to be Eached over.
 			continue
 		}
 		dst, err = o.Encode(dst, k)
