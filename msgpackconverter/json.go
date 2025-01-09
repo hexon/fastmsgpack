@@ -306,10 +306,17 @@ func (c *converter) appendInt(i int) error {
 }
 
 func (c *converter) appendFloat32(f float32) error {
-	return c.write(strconv.AppendFloat(c.availableBuffer(), float64(f), 'f', -1, 32))
+	f64 := float64(f)
+	if math.IsNaN(f64) || math.IsInf(f64, 0) {
+		return fmt.Errorf("can't convert %f to JSON", f)
+	}
+	return c.write(strconv.AppendFloat(c.availableBuffer(), f64, 'f', -1, 32))
 }
 
 func (c *converter) appendFloat64(f float64) error {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return fmt.Errorf("can't convert %f to JSON", f)
+	}
 	return c.write(strconv.AppendFloat(c.availableBuffer(), f, 'f', -1, 64))
 }
 
