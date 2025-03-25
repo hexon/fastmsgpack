@@ -179,6 +179,7 @@ const (
 func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.DecodeOption) error {
 	cc := converter{
 		w:             bufio.NewWriter(dst),
+		uncommitted:   make([]byte, 0, 1024),
 		JSONConverter: c,
 	}
 	for _, o := range opts {
