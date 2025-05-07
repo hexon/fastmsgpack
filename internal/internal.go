@@ -2,8 +2,13 @@ package internal
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
+)
+
+var (
+	ErrNotExtension = errors.New("data is not an extension")
 )
 
 func DecodeBytesToUint(data []byte) (uint, bool) {
@@ -42,6 +47,65 @@ func AppendArrayLen(dst []byte, l int) ([]byte, error) {
 		return append(dst, 0xdd, byte(l>>24), byte(l>>16), byte(l>>8), byte(l)), nil
 	} else {
 		return nil, fmt.Errorf("fastmsgpack.Encode: map too long to encode (len %d)", l)
+	}
+}
+
+func DecodeExtensionHeader(data []byte) (int8, []byte, error) {
+	switch data[0] {
+	case 0xd4:
+		if len(data) < 3 {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[1]), data[2:3], nil
+	case 0xd5:
+		if len(data) < 4 {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[1]), data[2:4], nil
+	case 0xd6:
+		if len(data) < 6 {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[1]), data[2:6], nil
+	case 0xd7:
+		if len(data) < 10 {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[1]), data[2:10], nil
+	case 0xd8:
+		if len(data) < 18 {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[1]), data[2:18], nil
+	case 0xc7:
+		if len(data) < 3 {
+			return 0, nil, ErrShortInput
+		}
+		s := int(data[1]) + 3
+		if len(data) < s {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[2]), data[3:s], nil
+	case 0xc8:
+		if len(data) < 4 {
+			return 0, nil, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint16(data[1:3])) + 4
+		if len(data) < s {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[3]), data[4:s], nil
+	case 0xc9:
+		if len(data) < 6 {
+			return 0, nil, ErrShortInput
+		}
+		s := int(binary.BigEndian.Uint32(data[1:5])) + 6
+		if len(data) < s {
+			return 0, nil, ErrShortInput
+		}
+		return int8(data[5]), data[6:s], nil
+	default:
+		return 0, nil, ErrNotExtension
 	}
 }
 
