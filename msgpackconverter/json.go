@@ -182,6 +182,7 @@ func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.D
 		uncommitted:   make([]byte, 0, 1024),
 		JSONConverter: c,
 	}
+	cc.options = cc.options.Clone()
 	for _, o := range opts {
 		o(&cc.options)
 	}

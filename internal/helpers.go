@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 	"unsafe"
 )
@@ -18,6 +19,14 @@ type DecodeOptions struct {
 	Dict            *Dict
 	FlavorSelectors map[uint]uint
 	Injections      map[uint][]byte
+}
+
+func (d DecodeOptions) Clone() DecodeOptions {
+	return DecodeOptions{
+		Dict:            d.Dict,
+		FlavorSelectors: maps.Clone(d.FlavorSelectors),
+		Injections:      maps.Clone(d.Injections),
+	}
 }
 
 func UnsafeStringCast(data []byte) string {
