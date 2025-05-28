@@ -187,6 +187,19 @@ func (d *Decoder) DecodeRaw() ([]byte, error) {
 	return b, nil
 }
 
+// DecodeLazy returns a new decoder for the next value in the stream, and progresses the current decoder over that value.
+// It is equivalent to `NewDecoder(d.DecodeRaw(), sameOptions...)`.
+func (d *Decoder) DecodeLazy() (*Decoder, error) {
+	b, err := d.DecodeRaw()
+	if err != nil {
+		return nil, err
+	}
+	return &Decoder{
+		data: b,
+		opt:  d.opt,
+	}, nil
+}
+
 // Break out of the map or array we're currently in.
 // This can only be called before the last element of the array/map is read, because otherwise you'd break out one level higher.
 func (d *Decoder) Break() error {
