@@ -380,7 +380,7 @@ func (c *converter) convertValue_ext(data []byte, extType int8) error {
 }
 
 func encodeJSONString(dst, s []byte) []byte {
-	if len(dst) <= len(s)+2 {
+	if cap(dst) < len(s)+2 {
 		dst = make([]byte, 0, len(s)*10/8)
 	}
 	dst = append(dst, '"')
