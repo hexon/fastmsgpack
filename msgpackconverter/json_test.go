@@ -7,11 +7,12 @@ import (
 	"github.com/hexon/fastmsgpack"
 )
 
+var void = fastmsgpack.Extension{Type: 19}
+
 func TestJSON(t *testing.T) {
 	tests := []struct {
-		data      any
-		hideNulls bool
-		want      string
+		data any
+		want string
 	}{
 		{
 			data: 5,
@@ -34,18 +35,16 @@ func TestJSON(t *testing.T) {
 			want: "[1,2,3]",
 		},
 		{
-			data:      []any{1, nil, 3},
-			hideNulls: true,
-			want:      "[1,3]",
+			data: []any{1, void, 3},
+			want: "[1,3]",
 		},
 		{
 			data: []any{1, 2, 3},
 			want: "[1,2,3]",
 		},
 		{
-			data:      map[string]any{"x": 5, "y": nil},
-			hideNulls: true,
-			want:      "{\"x\":5}",
+			data: map[string]any{"x": 5, "y": void},
+			want: "{\"x\":5}",
 		},
 	}
 	for _, tc := range tests {
@@ -54,11 +53,7 @@ func TestJSON(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Can't convert data to msgpack: %v", err)
 			}
-			var opts []fastmsgpack.DecodeOption
-			if tc.hideNulls {
-				opts = append(opts, WithHideNulls())
-			}
-			j := NewJSONConverter(opts...)
+			j := NewJSONConverter()
 			var got bytes.Buffer
 			if err := j.Convert(&got, msgp); err != nil {
 				t.Fatalf("Failed to convert msgpack to JSON: %v", err)
