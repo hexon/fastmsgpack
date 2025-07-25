@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -175,18 +176,28 @@ const (
 	transactionalStateRolledBack
 )
 
+var converterPool sync.Pool
+
 // Convert the given msgpack to JSON efficiently.
 func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.DecodeOption) error {
-	cc := converter{
-		w:             bufio.NewWriter(dst),
-		uncommitted:   make([]byte, 0, 1024),
-		JSONConverter: c,
+	cc, ok := converterPool.Get().(*converter)
+	if ok {
+		cc.w.Reset(dst)
+		cc.JSONConverter = c
+		cc.uncommitted = cc.uncommitted[:0]
+	} else {
+		cc = &converter{
+			w:             bufio.NewWriter(dst),
+			uncommitted:   make([]byte, 0, 1024),
+			JSONConverter: c,
+		}
 	}
 	cc.options = cc.options.Clone()
 	for _, o := range opts {
 		o(&cc.options)
 	}
 	cc.encodedDict = cc.ensureDictPrepared()
+	defer converterPool.Put(cc)
 	if _, err := cc.convertValue(data); err != nil {
 		return err
 	}
