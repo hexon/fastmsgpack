@@ -131,21 +131,21 @@ func NewJSONConverter(opts ...fastmsgpack.DecodeOption) JSONConverter {
 	for _, o := range opts {
 		o(&ret.options)
 	}
-	ret.ensureDictPrepared()
+	ensureDictPrepared(ret.options)
 	return ret
 }
 
-func (c *JSONConverter) ensureDictPrepared() [][]byte {
-	if c.options.Dict == nil {
+func ensureDictPrepared(options internal.DecodeOptions) [][]byte {
+	if options.Dict == nil {
 		return nil
 	}
-	d := c.options.Dict
+	d := options.Dict
 	e := d.JSONEncoded.Load()
 	if e != nil {
 		return *e
 	}
-	encodedDict := make([][]byte, len(c.options.Dict.Strings))
-	for i, s := range c.options.Dict.Strings {
+	encodedDict := make([][]byte, len(options.Dict.Strings))
+	for i, s := range options.Dict.Strings {
 		encodedDict[i] = encodeJSONString(nil, []byte(s))
 	}
 	d.JSONEncoded.Store(&encodedDict)
@@ -153,8 +153,8 @@ func (c *JSONConverter) ensureDictPrepared() [][]byte {
 }
 
 type converter struct {
-	w *bufio.Writer
-	JSONConverter
+	w                  *bufio.Writer
+	options            internal.DecodeOptions
 	encodedDict        [][]byte
 	uncommitted        []byte
 	transactionalState transactionalState
@@ -183,20 +183,18 @@ func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.D
 	cc, ok := converterPool.Get().(*converter)
 	if ok {
 		cc.w.Reset(dst)
-		cc.JSONConverter = c
 		cc.uncommitted = cc.uncommitted[:0]
 	} else {
 		cc = &converter{
-			w:             bufio.NewWriter(dst),
-			uncommitted:   make([]byte, 0, 1024),
-			JSONConverter: c,
+			w:           bufio.NewWriter(dst),
+			uncommitted: make([]byte, 0, 1024),
 		}
 	}
-	cc.options = cc.options.Clone()
+	cc.options = c.options.Clone()
 	for _, o := range opts {
 		o(&cc.options)
 	}
-	cc.encodedDict = cc.ensureDictPrepared()
+	cc.encodedDict = ensureDictPrepared(cc.options)
 	defer converterPool.Put(cc)
 	if _, err := cc.convertValue(data); err != nil {
 		return err
