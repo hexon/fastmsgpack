@@ -697,6 +697,12 @@ func DecodeFloat32(data []byte, opt DecodeOptions) (float32, int, error) {
 	if len(data) < 1 {
 		return 0, 0, ErrShortInput
 	}
+	if data[0] <= 0x7f {
+		return float32(int(data[0])), 1, nil
+	}
+	if data[0] >= 0xe0 {
+		return float32(int(int8(data[0]))), 1, nil
+	}
 	switch data[0] {
 	case 0xca:
 		if len(data) < 5 {
@@ -819,6 +825,12 @@ func DecodeFloat32(data []byte, opt DecodeOptions) (float32, int, error) {
 func DecodeFloat64(data []byte, opt DecodeOptions) (float64, int, error) {
 	if len(data) < 1 {
 		return 0, 0, ErrShortInput
+	}
+	if data[0] <= 0x7f {
+		return float64(int(data[0])), 1, nil
+	}
+	if data[0] >= 0xe0 {
+		return float64(int(int8(data[0]))), 1, nil
 	}
 	switch data[0] {
 	case 0xca:

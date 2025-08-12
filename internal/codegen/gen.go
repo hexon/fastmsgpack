@@ -171,7 +171,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 		fmt.Fprintf(w, "	if data[0] & 0b11100000 == 0b10100000 {\n")
 		generateDecodeType(w, retType, name, guaranteedLength, fixstr)
 		fmt.Fprintf(w, "	}\n")
-	} else if retType == "int" {
+	} else if retType == "int" || retType == "float32" || retType == "float64" {
 		fmt.Fprintf(w, "	if data[0] <= 0x7f {\n")
 		generateDecodeType(w, retType, name, guaranteedLength, positiveFixint)
 		fmt.Fprintf(w, "	}\n")
@@ -197,7 +197,7 @@ func generate(w *bytes.Buffer, retType, name string) {
 		generateDecodeType(w, retType, name, guaranteedLength, fixstr)
 		fmt.Fprintf(w, "	}\n")
 	}
-	if !typeRestricted || retType == "int" {
+	if !typeRestricted || retType == "int" || retType == "float32" || retType == "float64" {
 		fmt.Fprintf(w, "	if data[0] >= 0xe0 {\n")
 		generateDecodeType(w, retType, name, guaranteedLength, negativeFixint)
 		fmt.Fprintf(w, "	}\n")
