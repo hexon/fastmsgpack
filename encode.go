@@ -319,3 +319,84 @@ func (o EncodeOptions) EncodeMapLen(dst []byte, n int) ([]byte, error) {
 func (o EncodeOptions) EncodeArrayLen(dst []byte, n int) ([]byte, error) {
 	return internal.AppendArrayLen(dst, n)
 }
+
+// AppendPreliminaryMapLen is like EncodeMapLen in case you don't know the exact length yet.
+// You'll get a PreliminaryLengthHeader on which you're required to call .Finalize() once you know the exact number of key-values appended.
+func (o EncodeOptions) AppendPreliminaryMapLen(dst []byte, max int) ([]byte, PreliminaryLengthHeader) {
+	return appendPreliminaryLen(dst, max, true)
+}
+
+// AppendPreliminaryArrayLen is like EncodeArrayLen in case you don't know the exact length yet.
+// You'll get a PreliminaryLengthHeader on which you're required to call .Finalize() once you know the exact number of values appended.
+func (o EncodeOptions) AppendPreliminaryArrayLen(dst []byte, max int) ([]byte, PreliminaryLengthHeader) {
+	return appendPreliminaryLen(dst, max, false)
+}
+
+func appendPreliminaryLen(dst []byte, max int, isMap bool) ([]byte, PreliminaryLengthHeader) {
+	buf := make([]byte, 5)
+	var size int
+	if max < 0 {
+		panic("appendPreliminaryLen: negative max is invalid")
+	}
+	if max < 16 {
+		size = 1
+	} else if max < math.MaxUint16 {
+		size = 3
+	} else if max < math.MaxUint32 {
+		size = 5
+	} else {
+		// This can't be encoded. We'll give an error in Finalize.
+		size = 5
+	}
+	buf = buf[:size]
+	for i := range buf {
+		// Initialize it to invalid msgpack, in case Finalize is not called.
+		buf[i] = 0xc1
+	}
+	offset := len(dst)
+	return append(dst, buf...), PreliminaryLengthHeader{offset, max, isMap}
+}
+
+type PreliminaryLengthHeader struct {
+	offset int
+	max    int
+	isMap  bool
+}
+
+// Finalize must be called to store the actual number of elements in this map/array length header.
+// You must give the current buf (it might have a new backing array if you've exceeded the capacity).
+func (p PreliminaryLengthHeader) Finalize(buf []byte, num int) error {
+	if p.max >= math.MaxUint32 {
+		return fmt.Errorf("fastmsgpack.PreliminaryLengthHeader: you said to encode at most %d elements, but the most msgpack supports is 2^32-1", p.max)
+	}
+	if num > p.max {
+		return fmt.Errorf("fastmsgpack.PreliminaryLengthHeader.Finalize: you promised to encode at most %d, but encoded %d", p.max, num)
+	}
+	buf = buf[p.offset:]
+	if p.max < 16 {
+		if p.isMap {
+			buf[0] = 0x80 | byte(num)
+		} else {
+			buf[0] = 0x90 | byte(num)
+		}
+	} else if p.max < math.MaxUint16 {
+		if p.isMap {
+			buf[0] = 0xde
+		} else {
+			buf[0] = 0xdc
+		}
+		buf[1] = byte(num >> 8)
+		buf[2] = byte(num)
+	} else {
+		if p.isMap {
+			buf[0] = 0xdf
+		} else {
+			buf[0] = 0xdd
+		}
+		buf[1] = byte(num >> 24)
+		buf[2] = byte(num >> 16)
+		buf[3] = byte(num >> 8)
+		buf[4] = byte(num)
+	}
+	return nil
+}
