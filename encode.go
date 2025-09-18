@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"time"
 
 	"github.com/hexon/fastmsgpack/internal"
@@ -24,28 +25,19 @@ func Encode(dst []byte, v any) ([]byte, error) {
 func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 	switch v := v.(type) {
 	case nil:
-		return append(dst, 0xc0), nil
+		return o.EncodeNil(dst), nil
 	case bool:
-		if v {
-			return append(dst, 0xc3), nil
-		}
-		return append(dst, 0xc2), nil
+		return o.EncodeBool(dst, v), nil
 
 	case []byte:
-		return encodeBytes(dst, v)
+		return o.EncodeBytes(dst, v)
 	case string:
-		return o.encodeString(dst, v)
+		return o.EncodeString(dst, v)
 
 	case float32:
-		var buf [5]byte
-		buf[0] = 0xca
-		binary.BigEndian.PutUint32(buf[1:], math.Float32bits(v))
-		return append(dst, buf[:]...), nil
+		return o.EncodeFloat32(dst, v), nil
 	case float64:
-		var buf [9]byte
-		buf[0] = 0xcb
-		binary.BigEndian.PutUint64(buf[1:], math.Float64bits(v))
-		return append(dst, buf[:]...), nil
+		return o.EncodeFloat64(dst, v), nil
 	case int:
 		return appendCompactInt(dst, v), nil
 	case uint:
@@ -100,7 +92,7 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 			return nil, err
 		}
 		for k, sv := range v {
-			dst, err = o.Encode(dst, k)
+			dst, err = o.EncodeString(dst, k)
 			if err != nil {
 				return nil, err
 			}
@@ -124,7 +116,7 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 		return dst, nil
 
 	case time.Time:
-		return encodeTime(dst, v)
+		return o.EncodeTime(dst, v), nil
 	case Extension:
 		return v.AppendMsgpack(dst)
 
@@ -183,7 +175,26 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 	}
 }
 
-func (o EncodeOptions) encodeString(dst []byte, v string) ([]byte, error) {
+func (o EncodeOptions) EncodeNil(dst []byte) []byte {
+	return append(dst, 0xc0)
+}
+
+func (o EncodeOptions) EncodeBool(dst []byte, v bool) []byte {
+	if v {
+		return o.EncodeTrue(dst)
+	}
+	return o.EncodeFalse(dst)
+}
+
+func (o EncodeOptions) EncodeTrue(dst []byte) []byte {
+	return append(dst, 0xc3)
+}
+
+func (o EncodeOptions) EncodeFalse(dst []byte) []byte {
+	return append(dst, 0xc2)
+}
+
+func (o EncodeOptions) EncodeString(dst []byte, v string) ([]byte, error) {
 	if idx, ok := o.Dict[v]; ok {
 		if idx <= math.MaxUint8 {
 			return append(dst, 0xd4, 128, byte(idx)), nil
@@ -196,12 +207,16 @@ func (o EncodeOptions) encodeString(dst []byte, v string) ([]byte, error) {
 		}
 	}
 	if len(v) < 32 {
+		dst = slices.Grow(dst, 1+len(v))
 		dst = append(dst, 0xa0|byte(len(v)))
 	} else if len(v) <= math.MaxUint8 {
+		dst = slices.Grow(dst, 2+len(v))
 		dst = append(dst, 0xd9, uint8(len(v)))
 	} else if len(v) <= math.MaxUint16 {
+		dst = slices.Grow(dst, 3+len(v))
 		dst = append(dst, 0xda, byte(len(v)>>8), byte(len(v)))
 	} else if len(v) <= math.MaxUint32 {
+		dst = slices.Grow(dst, 5+len(v))
 		dst = append(dst, 0xdb, byte(len(v)>>24), byte(len(v)>>16), byte(len(v)>>8), byte(len(v)))
 	} else {
 		return nil, fmt.Errorf("fastmsgpack.Encode: string too long to encode (len %d)", len(v))
@@ -209,7 +224,7 @@ func (o EncodeOptions) encodeString(dst []byte, v string) ([]byte, error) {
 	return append(dst, v...), nil
 }
 
-func encodeBytes(dst []byte, v []byte) ([]byte, error) {
+func (o EncodeOptions) EncodeBytes(dst []byte, v []byte) ([]byte, error) {
 	if len(v) <= math.MaxUint8 {
 		dst = append(dst, 0xc4, uint8(len(v)))
 	} else if len(v) <= math.MaxUint16 {
@@ -222,17 +237,17 @@ func encodeBytes(dst []byte, v []byte) ([]byte, error) {
 	return append(dst, v...), nil
 }
 
-func encodeTime(dst []byte, v time.Time) ([]byte, error) {
+func (o EncodeOptions) EncodeTime(dst []byte, v time.Time) []byte {
 	secs := v.Unix()
 	nanos := v.Nanosecond()
 	if secs>>34 != 0 {
-		return append(dst, 0xc7, 12, 255, byte(nanos>>24), byte(nanos>>16), byte(nanos>>8), byte(nanos), byte(secs>>56), byte(secs>>48), byte(secs>>40), byte(secs>>32), byte(secs>>24), byte(secs>>16), byte(secs>>8), byte(secs)), nil
+		return append(dst, 0xc7, 12, 255, byte(nanos>>24), byte(nanos>>16), byte(nanos>>8), byte(nanos), byte(secs>>56), byte(secs>>48), byte(secs>>40), byte(secs>>32), byte(secs>>24), byte(secs>>16), byte(secs>>8), byte(secs))
 	}
 	val := uint64(nanos<<34) | uint64(secs)
 	if val&0xffffffff00000000 == 0 {
-		return append(dst, 0xd6, 255, byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
+		return append(dst, 0xd6, 255, byte(val>>24), byte(val>>16), byte(val>>8), byte(val))
 	}
-	return append(dst, 0xd7, 255, byte(val>>56), byte(val>>48), byte(val>>40), byte(val>>32), byte(val>>24), byte(val>>16), byte(val>>8), byte(val)), nil
+	return append(dst, 0xd7, 255, byte(val>>56), byte(val>>48), byte(val>>40), byte(val>>32), byte(val>>24), byte(val>>16), byte(val>>8), byte(val))
 }
 
 func appendCompactInt(dst []byte, i int) []byte {
@@ -271,4 +286,36 @@ func appendCompactUint(dst []byte, i uint) []byte {
 	} else {
 		return append(dst, 0xcf, byte(i>>56), byte(i>>48), byte(i>>40), byte(i>>32), byte(i>>24), byte(i>>16), byte(i>>8), byte(i))
 	}
+}
+
+func (o EncodeOptions) EncodeFloat32(dst []byte, f float32) []byte {
+	var buf [5]byte
+	buf[0] = 0xca
+	binary.BigEndian.PutUint32(buf[1:], math.Float32bits(f))
+	return append(dst, buf[:]...)
+}
+
+func (o EncodeOptions) EncodeFloat64(dst []byte, f float64) []byte {
+	var buf [9]byte
+	buf[0] = 0xcb
+	binary.BigEndian.PutUint64(buf[1:], math.Float64bits(f))
+	return append(dst, buf[:]...)
+}
+
+func (o EncodeOptions) EncodeInt(dst []byte, v int) []byte {
+	return appendCompactInt(dst, v)
+}
+
+func (o EncodeOptions) EncodeUint(dst []byte, v uint) []byte {
+	return appendCompactUint(dst, v)
+}
+
+// EncodeMapLen appends a map header that indicates the next n key+values are part of this map.
+func (o EncodeOptions) EncodeMapLen(dst []byte, n int) ([]byte, error) {
+	return internal.AppendMapLen(dst, n)
+}
+
+// EncodeArrayLen appends an array header that indicates the next n values are part of this array.
+func (o EncodeOptions) EncodeArrayLen(dst []byte, n int) ([]byte, error) {
+	return internal.AppendArrayLen(dst, n)
 }

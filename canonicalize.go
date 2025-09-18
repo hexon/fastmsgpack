@@ -57,11 +57,11 @@ func (c *canonicalizer) probablyAppended(b []byte, err error) error {
 }
 
 func (c *canonicalizer) appendBytes(b []byte) error {
-	return c.probablyAppended(encodeBytes(c.ret, b))
+	return c.probablyAppended(c.encodeOptions.EncodeBytes(c.ret, b))
 }
 
 func (c *canonicalizer) appendString(s string) error {
-	return c.probablyAppended(c.encodeOptions.encodeString(c.ret, s))
+	return c.probablyAppended(c.encodeOptions.EncodeString(c.ret, s))
 }
 
 func (c *canonicalizer) appendInt(raw []byte, n int) error {
@@ -177,7 +177,8 @@ func (c *canonicalizer) canonicalize_ext(data []byte, extType int8) error {
 		if err != nil {
 			return err
 		}
-		return c.probablyAppended(encodeTime(c.ret, ts))
+		c.ret = c.encodeOptions.EncodeTime(c.ret, ts)
+		return nil
 
 	case int8(math.MinInt8): // Interned string
 		n, ok := internal.DecodeBytesToUint(data)
