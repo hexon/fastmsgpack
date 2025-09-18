@@ -139,6 +139,9 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 		rv := reflect.ValueOf(v)
 		switch rv.Kind() {
 		case reflect.Pointer:
+			if rv.IsNil() {
+				return o.EncodeNil(dst), nil
+			}
 			return o.Encode(dst, rv.Elem().Interface())
 
 		case reflect.Map:
