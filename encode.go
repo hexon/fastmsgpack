@@ -128,6 +128,9 @@ func (o EncodeOptions) Encode(dst []byte, v any) ([]byte, error) {
 	case Extension:
 		return v.AppendMsgpack(dst)
 
+	case interface{ AppendMsgpack([]byte) ([]byte, error) }:
+		return v.AppendMsgpack(dst)
+
 	case interface{ MarshalMsgpack() ([]byte, error) }:
 		b, err := v.MarshalMsgpack()
 		if err != nil {
