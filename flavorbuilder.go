@@ -36,6 +36,22 @@ func (f *FlavorBuilder) AddCase(match uint, b []byte) {
 	f.cases = append(f.cases, flavorCase{match, f.dataChunk(b)})
 }
 
+func (f *FlavorBuilder) CopyCase(existing uint, newRefs ...uint) {
+	chunk := -1
+	for _, c := range f.cases {
+		if c.match == existing {
+			chunk = c.chunk
+			break
+		}
+	}
+	if chunk == -1 {
+		panic("fastmsgpack.FlavorBuilder.CopyCase: Case to be copied does not exist")
+	}
+	for _, n := range newRefs {
+		f.cases = append(f.cases, flavorCase{n, chunk})
+	}
+}
+
 func (f *FlavorBuilder) SetElse(b []byte) {
 	e := f.dataChunk(b)
 	f.elseCase = &e
