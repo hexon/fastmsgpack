@@ -35,7 +35,9 @@ func Fdump(dst io.Writer, data []byte, opts ...fastmsgpack.DecodeOption) error {
 }
 
 func (p *printer) debugValue_array(data []byte, offset, elements int) (int, error) {
-	p.printf("[%02x] array (%d elements)", data[:offset], elements)
+	if err := p.printf("[%02x] array (%d elements)", data[:offset], elements); err != nil {
+		return 0, err
+	}
 	p.indent++
 	for i := 0; elements > i; i++ {
 		n, err := p.debugValue(data[offset:])
@@ -45,12 +47,16 @@ func (p *printer) debugValue_array(data []byte, offset, elements int) (int, erro
 		offset += n
 	}
 	p.indent--
-	p.printf("(end of array)")
+	if err := p.printf("(end of array)"); err != nil {
+		return 0, err
+	}
 	return offset, nil
 }
 
 func (p *printer) debugValue_map(data []byte, offset, elements int) (int, error) {
-	p.printf("[%02x] map (%d elements)", data[:offset], elements)
+	if err := p.printf("[%02x] map (%d elements)", data[:offset], elements); err != nil {
+		return 0, err
+	}
 	p.indent++
 	for i := 0; elements > i; i++ {
 		n, err := p.debugValue(data[offset:])
@@ -67,15 +73,20 @@ func (p *printer) debugValue_map(data []byte, offset, elements int) (int, error)
 		p.indent--
 	}
 	p.indent--
-	p.printf("(end of map)")
+	if err := p.printf("(end of map)"); err != nil {
+		return 0, err
+	}
 	return offset, nil
 }
 
 func (p *printer) printf(f string, args ...any) error {
-	p.w.WriteString(strings.Repeat("\t", p.indent))
-	_, err := fmt.Fprintf(p.w, f, args...)
-	p.w.WriteByte('\n')
-	return err
+	if _, err := p.w.WriteString(strings.Repeat("\t", p.indent)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(p.w, f, args...); err != nil {
+		return err
+	}
+	return p.w.WriteByte('\n')
 }
 
 func (p *printer) appendBytes(header, b []byte) error {
@@ -165,7 +176,9 @@ func (p *printer) debugFlavor(header, data []byte) error {
 	data = data[sz:]
 	hasElse := numCases&1 == 1
 	numCases >>= 1
-	p.printf("[%02x %02x] flavor selector (field: %d, cases: %d, else: %v)", header, full[:cap(full)-cap(data)], selector, numCases, hasElse)
+	if err := p.printf("[%02x %02x] flavor selector (field: %d, cases: %d, else: %v)", header, full[:cap(full)-cap(data)], selector, numCases, hasElse); err != nil {
+		return err
+	}
 	p.indent++
 	var jumpTargets []uint64
 	for numCases > 0 {
@@ -180,7 +193,9 @@ func (p *printer) debugFlavor(header, data []byte) error {
 			return internal.ErrCorruptedFlavorData
 		}
 		data = data[sz:]
-		p.printf("case %d: jump %d", n, j)
+		if err := p.printf("case %d: jump %d", n, j); err != nil {
+			return err
+		}
 		jumpTargets = append(jumpTargets, j)
 		numCases--
 	}
@@ -189,13 +204,17 @@ func (p *printer) debugFlavor(header, data []byte) error {
 		if sz <= 0 {
 			return internal.ErrCorruptedFlavorData
 		}
-		p.printf("else: jump %d", j)
+		if err := p.printf("else: jump %d", j); err != nil {
+			return err
+		}
 		jumpTargets = append(jumpTargets, j)
 	}
 	slices.Sort(jumpTargets)
 	jumpTargets = slices.Compact(jumpTargets)
 	for _, j := range jumpTargets {
-		p.printf("offset %d:", j)
+		if err := p.printf("offset %d:", j); err != nil {
+			return err
+		}
 		p.indent++
 		_, err := p.debugValue(full[j:])
 		p.indent--
