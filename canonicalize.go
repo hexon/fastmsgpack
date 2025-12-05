@@ -22,11 +22,7 @@ func canonicalizerGetBuf() []byte {
 }
 
 func Canonical(dst, data []byte, eo EncodeOptions, opts ...DecodeOption) ([]byte, error) {
-	if cap(dst) < len(data) {
-		d := make([]byte, 0, len(dst)+len(data))
-		copy(d, dst)
-		dst = d
-	}
+	dst = slices.Grow(dst, len(data))
 	c := canonicalizer{
 		ret:           dst,
 		encodeOptions: eo,

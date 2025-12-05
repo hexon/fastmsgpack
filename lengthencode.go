@@ -3,6 +3,7 @@ package fastmsgpack
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 
 	"github.com/hexon/fastmsgpack/internal"
@@ -25,11 +26,7 @@ func LengthEncode(dst, data []byte) ([]byte, error) {
 		}
 		return nil, err
 	}
-	if cap(dst) < l {
-		d := make([]byte, 0, len(dst)+l)
-		copy(d, dst)
-		dst = d
-	}
+	dst = slices.Grow(dst, l)
 	offset := 0
 	for _, chunks := range le.listOfChunks {
 		for _, c := range chunks {
