@@ -232,6 +232,14 @@ func (d *Decoder) PeekType() ValueType {
 	return DecodeType(d.data[d.offset:])
 }
 
+// Reset this decoder for use on another piece of msgpack (with the same settings).
+func (d *Decoder) Reset(data []byte) {
+	d.data = data
+	clear(d.nestingInfo)
+	d.nestingInfo = d.nestingInfo[:0]
+	d.offset = 0
+}
+
 func (d *Decoder) consumedOne() {
 	l := len(d.nestingInfo) - 1
 	if l < 0 {
