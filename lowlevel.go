@@ -31,7 +31,7 @@ func SplitArray(data []byte) ([][]byte, error) {
 // SplitMap splits a msgpack map into string-keys and the msgpack-values. It does not decode the values.
 // The returned slices point into the given data.
 func SplitMap(data []byte, dict *Dict) ([]string, [][]byte, error) {
-	d := NewDecoder(data)
+	d := NewDecoder(data, WithDict(dict))
 	elements, err := d.DecodeMapLen()
 	if err != nil {
 		return nil, nil, err
