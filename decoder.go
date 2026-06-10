@@ -175,6 +175,7 @@ func (d *Decoder) Skip() error {
 }
 
 // DecodeRaw decodes the next value enough to know its length and returns the msgpack data for it while skipping over it.
+// If the next value is a map or array, the returned data includes all (keys and) values.
 func (d *Decoder) DecodeRaw() ([]byte, error) {
 	b := d.data[d.offset:]
 	c, err := internal.ValueLength(b)
@@ -226,10 +227,21 @@ func (d *Decoder) Break() error {
 	return nil
 }
 
-// PeekType returns the type of next entry without changing the state of the Decoder.
+// PeekType returns the type of the next entry without changing the state of the Decoder.
 // PeekType returning another value than TypeInvalid does not guarantee decoding it will succeed.
 func (d *Decoder) PeekType() ValueType {
 	return DecodeType(d.data[d.offset:])
+}
+
+// PeekRaw returns the full msgpack of the next entry without changing the state of the Decoder.
+// If the next value is a map or array, the returned data includes all (keys and) values.
+func (d *Decoder) PeekRaw() ([]byte, error) {
+	b := d.data[d.offset:]
+	c, err := internal.ValueLength(b)
+	if err != nil {
+		return nil, err
+	}
+	return b[:c], nil
 }
 
 // Reset this decoder for use on another piece of msgpack (with the same settings).
