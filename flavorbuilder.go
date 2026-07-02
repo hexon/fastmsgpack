@@ -175,7 +175,7 @@ func (f FlavorBuilder) AppendMsgpack(dst []byte) ([]byte, error) {
 	}
 	if headerSize > estimatedHeaderSize {
 		// We estimated the extension header too small and need to move the flavor header down a little.
-		dst = dst[len(dst)+headerSize-estimatedHeaderSize:]
+		dst = dst[:len(dst)+headerSize-estimatedHeaderSize]
 		copy(dst[lengthBefore+headerSize-estimatedHeaderSize:], dst[lengthBefore:])
 	} else if headerSize < estimatedHeaderSize {
 		copy(dst[lengthBefore+headerSize-estimatedHeaderSize:], dst[lengthBefore:])
