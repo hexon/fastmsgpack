@@ -219,6 +219,9 @@ func getReusableConverter(dst io.Writer) (*converter, func()) {
 		} else {
 			cc.w.Reset(io.Discard)
 		}
+		cc.options = internal.DecodeOptions{}
+		cc.encodedDict = nil
+		cc.transactionalState = transactionalStateNormal
 		converterPool.Put(cc)
 	}
 	return cc, release
