@@ -180,26 +180,48 @@ var converterPool sync.Pool
 
 // Convert the given msgpack to JSON efficiently.
 func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.DecodeOption) error {
-	cc, ok := converterPool.Get().(*converter)
-	if ok {
-		cc.w.Reset(dst)
-		cc.uncommitted = cc.uncommitted[:0]
-	} else {
-		cc = &converter{
-			w:           bufio.NewWriter(dst),
-			uncommitted: make([]byte, 0, 1024),
-		}
-	}
+	cc, release := getReusableConverter(dst)
 	cc.options = c.options.Clone()
 	for _, o := range opts {
 		o(&cc.options)
 	}
 	cc.encodedDict = ensureDictPrepared(cc.options)
-	defer converterPool.Put(cc)
+	defer release()
 	if _, err := cc.convertValue(data); err != nil {
 		return err
 	}
 	return cc.w.Flush()
+}
+
+func getReusableConverter(dst io.Writer) (*converter, func()) {
+	var maybeStashedWriter *bufio.Writer
+	cc, ok := converterPool.Get().(*converter)
+	if ok {
+		if bw, ok := dst.(*bufio.Writer); ok {
+			maybeStashedWriter = cc.w
+			cc.w = bw
+		} else if cc.w == nil {
+			cc.w = bufio.NewWriter(dst)
+		} else {
+			cc.w.Reset(dst)
+		}
+		cc.uncommitted = cc.uncommitted[:0]
+	} else {
+		cc = &converter{
+			// Note that bufio.NewWriter() might return dst itself if that's a large enough *bufio.Writer.
+			w:           bufio.NewWriter(dst),
+			uncommitted: make([]byte, 0, 1024),
+		}
+	}
+	release := func() {
+		if cc.w == dst {
+			cc.w = maybeStashedWriter
+		} else {
+			cc.w.Reset(io.Discard)
+		}
+		converterPool.Put(cc)
+	}
+	return cc, release
 }
 
 func (c *converter) convertValue_array(data []byte, offset, elements int) (int, error) {
