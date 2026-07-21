@@ -181,9 +181,13 @@ var converterPool sync.Pool
 // Convert the given msgpack to JSON efficiently.
 func (c JSONConverter) Convert(dst io.Writer, data []byte, opts ...fastmsgpack.DecodeOption) error {
 	cc, release := getReusableConverter(dst)
-	cc.options = c.options.Clone()
-	for _, o := range opts {
-		o(&cc.options)
+	if len(opts) == 0 {
+		cc.options = c.options
+	} else {
+		cc.options = c.options.Clone()
+		for _, o := range opts {
+			o(&cc.options)
+		}
 	}
 	cc.encodedDict = ensureDictPrepared(cc.options)
 	defer release()
