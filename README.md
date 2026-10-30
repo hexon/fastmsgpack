@@ -17,7 +17,7 @@ Fastmsgpack is a Golang msgpack decoder. It is fast, but lacks features you migh
 * It uses unsafe (to cast []byte to string without copying).
 * It can't deserialize into your structs.
 * It only supports strings as map keys.
-* It assumes maps don't have duplicate keys. (mpmerge writes an invalid map if they do.)
+* It assumes maps don't have duplicate keys.
 * It decodes all ints as a Go `int`, including 64 bit ones, so it doesn't work on 32-bit platforms.
 
 ## Supported extensions:
