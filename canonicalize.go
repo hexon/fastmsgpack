@@ -121,7 +121,7 @@ func (c *canonicalizer) canonicalize_map(data []byte, offset, elements int) (int
 		offset += consume
 		key := sc.ret
 		if bytes.Equal(key, canonicalVoidExtension) {
-			consume, err := Size(data[consume:])
+			consume, err := Size(data[offset:])
 			if err != nil {
 				return 0, err
 			}
