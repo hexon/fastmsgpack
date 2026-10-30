@@ -262,6 +262,9 @@ func appendCompactInt(dst []byte, i int) []byte {
 	ai := i
 	if i < 0 {
 		ai = -i
+		if ai < 0 {
+			ai = math.MaxInt64
+		}
 	}
 	if ai <= math.MaxInt8 {
 		return append(dst, 0xd0, byte(ui))
