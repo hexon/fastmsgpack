@@ -100,6 +100,17 @@ func decodeInt_ext(data []byte, extType int8, opt DecodeOptions) (int, error) {
 		ret, _, err := DecodeInt(data[j:], opt)
 		return ret, err
 
+	case 19: // Void
+		return 0, ErrVoid
+
+	case 20: // Injection
+		b, err := DecodeInjectionExtension(data, opt)
+		if err != nil {
+			return 0, err
+		}
+		ret, _, err := DecodeInt(b, opt)
+		return ret, err
+
 	default:
 		extType := extType // Only let it escape in this (unlikely) branch.
 		return 0, fmt.Errorf("unexpected extension %d while expecting int", extType)
