@@ -50,6 +50,12 @@ func (sc *selectCall) selectFromMap(interests map[string]any, mustSkip bool, unc
 		}
 		k, _, err := internal.DecodeString(rawKey, sc.decoder.opt)
 		if err != nil {
+			if err == ErrVoid {
+				if err := sc.decoder.Skip(); err != nil {
+					return err
+				}
+				continue
+			}
 			return err
 		}
 		switch x := interests[k].(type) {
