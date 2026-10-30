@@ -262,6 +262,10 @@ func appendCompactInt(dst []byte, i int) []byte {
 	ai := i
 	if i < 0 {
 		ai = -i
+		if ai < 0 {
+			// -math.MinInt64 overflows back to math.MinInt64. Any value that large needs the 8-byte encoding.
+			ai = math.MaxInt64
+		}
 	}
 	if ai <= math.MaxInt8 {
 		return append(dst, 0xd0, byte(ui))
