@@ -252,29 +252,34 @@ func (d *Decoder) Reset(data []byte) {
 	d.offset = 0
 }
 
-func (d *Decoder) consumedOne() {
+// consumedOne marks one element of the current map/array as consumed. It returns true if that
+// finished a stepped-into map/array and we returned to the outer data (with d.offset already set).
+func (d *Decoder) consumedOne() bool {
 	l := len(d.nestingInfo) - 1
 	if l < 0 {
-		return
+		return false
 	}
 	if d.nestingInfo[l].remainingElements > 1 {
 		d.nestingInfo[l].remainingElements--
-	} else {
-		if d.nestingInfo[l].returnTo != nil {
-			d.data = d.nestingInfo[l].returnTo
-			d.offset = d.nestingInfo[l].end
-			d.nestingInfo[l].returnTo = nil // don't retain the pointer
-		}
-		d.nestingInfo = d.nestingInfo[:l]
+		return false
 	}
+	returned := false
+	if d.nestingInfo[l].returnTo != nil {
+		d.data = d.nestingInfo[l].returnTo
+		d.offset = d.nestingInfo[l].end
+		d.nestingInfo[l].returnTo = nil // don't retain the pointer
+		returned = true
+	}
+	d.nestingInfo = d.nestingInfo[:l]
+	return returned
 }
 
 func (d *Decoder) consumingPush(elements, consume, end int, stepIn []byte) {
 	// invariant: If stepIn != nil, end is known (and not 0)
 	if elements == 0 {
-		d.consumedOne()
 		// We either have an extension-wrapped value and $end is known; or we have a simple 0x80 empty map, in which case d.offset is already adjusted.
-		if end > 0 {
+		// If this was the last element of a stepped-into (flavored/injected) map/array, consumedOne returned us to the outer data and d.offset is already correct there; $end is relative to the inner data.
+		if !d.consumedOne() && end > 0 {
 			d.offset = end
 		}
 		return
