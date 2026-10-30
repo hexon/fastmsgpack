@@ -150,11 +150,6 @@ type resolveCall struct {
 func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) error {
 	elements, err := rc.decoder.DecodeMapLen()
 	if err != nil {
-		if err == ErrVoid {
-			if err := rc.decoder.Skip(); err != nil {
-				return err
-			}
-		}
 		return err
 	}
 
@@ -209,11 +204,6 @@ func (rc *resolveCall) recurseMap(interests map[string]any, mustSkip bool) error
 func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) error {
 	elements, err := rc.decoder.DecodeArrayLen()
 	if err != nil {
-		if err == ErrVoid {
-			if err := rc.decoder.Skip(); err != nil {
-				return err
-			}
-		}
 		return err
 	}
 	parentResults := rc.result
@@ -223,6 +213,9 @@ func (rc *resolveCall) recurseArray(sub subresolver, mustSkip bool) error {
 		rc.result = make([]any, sub.numFields)
 		if err := rc.recurseMap(sub.interests, mustSkip || i < elements-1); err != nil {
 			if err == ErrVoid {
+				if err := rc.decoder.Skip(); err != nil {
+					return err
+				}
 				voided++
 				continue
 			}
