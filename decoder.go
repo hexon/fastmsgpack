@@ -272,11 +272,11 @@ func (d *Decoder) consumedOne() {
 func (d *Decoder) consumingPush(elements, consume, end int, stepIn []byte) {
 	// invariant: If stepIn != nil, end is known (and not 0)
 	if elements == 0 {
-		d.consumedOne()
 		// We either have an extension-wrapped value and $end is known; or we have a simple 0x80 empty map, in which case d.offset is already adjusted.
 		if end > 0 {
 			d.offset = end
 		}
+		d.consumedOne()
 		return
 	}
 	add := nestingInfo{
